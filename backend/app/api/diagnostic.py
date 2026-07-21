@@ -7,6 +7,7 @@ from backend.app.models.models import Machine, ReferenceConfiguration, CurrentCo
 from backend.app.schemas.schemas import DiagnosticResultOut, DiagnosticRunRequest
 from backend.app.api.deps import get_current_user, require_role
 from backend.app.diagnostic_engine.engine import DiagnosticEngine
+from backend.app.diagnostic_engine.historical_model import HistoricalDiagnosticModel
 
 router = APIRouter(prefix="/diagnostic", tags=["Diagnostic Engine"])
 
@@ -66,6 +67,33 @@ def run_diagnostic(
     # 5. Execute diagnostic engine (Deterministic Python logic)
     diag_data = DiagnosticEngine.run_diagnostics(ref_dict, curr_dict)
 
+    # 5b. Fetch past historical inspection records for AI time-series trend analysis
+    past_results = db.query(DiagnosticResult).filter(
+        DiagnosticResult.machine_id == req.machine_id
+    ).order_by(DiagnosticResult.timestamp.desc()).limit(10).all()
+
+    history_list = []
+    for r in past_results:
+        metrics = r.details.get("metrics", {}) if isinstance(r.details, dict) else {}
+        history_list.append({
+            "temperature": metrics.get("temperature", 45.0),
+            "health_score": r.health_score,
+            "status": r.status,
+            "timestamp": str(r.timestamp)
+        })
+
+    # Evaluate machine health & operational decision against historical readings and baseline spec audit
+    hist_evaluation = HistoricalDiagnosticModel.evaluate_machine_condition(
+        machine_info={"name": machine.name, "model": machine.model, "category": machine.category},
+        ref_config=ref_dict,
+        curr_config=curr_dict,
+        current_health_score=diag_data["health_score"],
+        current_issues=diag_data["issues"],
+        history_records=history_list
+    )
+
+    diag_data["historical_evaluation"] = hist_evaluation
+
     # 6. Save diagnostic result
     result = DiagnosticResult(
         machine_id=req.machine_id,
@@ -73,7 +101,7 @@ def run_diagnostic(
         status=diag_data["status"],
         health_score=diag_data["health_score"],
         details=diag_data,
-        notes=f"Diagnostic checked by {current_user.username} via connection interface."
+        notes=f"Diagnostic checked by {current_user.username}. Operational Decision: {hist_evaluation['status_display']}."
     )
     db.add(result)
 
@@ -124,7 +152,7 @@ def run_diagnostic(
     log = ActivityLog(
         employee_id=current_user.employee_id,
         action="Diagnostic Completed",
-        details=f"Ran diagnosis on {machine.machine_id}. Health Score: {result.health_score}%. Status: {result.status}."
+        details=f"Ran diagnosis on {machine.machine_id}. Health Score: {result.health_score}%. Decision: {hist_evaluation['status_display']}."
     )
     db.add(log)
     db.commit()
