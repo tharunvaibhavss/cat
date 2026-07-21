@@ -33,11 +33,11 @@ const queryClient = new QueryClient({
   },
 });
 
-// 1 Minute total inactivity test limit (60 seconds)
-const INACTIVITY_LIMIT_MS = 1 * 60 * 1000;
-// Show warning modal when 15 seconds remain (at 45 seconds of idleness)
-const WARNING_BUFFER_MS = 15 * 1000;
-const WARNING_INITIAL_SECONDS = 15;
+// 10 Minutes total inactivity limit (600 seconds)
+const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
+// Show warning modal when 60 seconds remain (at 9 minutes of idleness)
+const WARNING_BUFFER_MS = 60 * 1000;
+const WARNING_INITIAL_SECONDS = 60;
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -191,7 +191,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
               </div>
               <h3 className="font-extrabold text-base text-gray-900 uppercase">Session Inactivity Timeout</h3>
               <p className="text-xs text-gray-600">
-                You have been idle. For security compliance, your terminal session will auto-terminate in:
+                You have been idle for 9 minutes. For security compliance, your terminal session will auto-terminate in:
               </p>
               <div className="text-3xl font-black font-mono text-rose-600 my-2">
                 {secondsRemaining}s
