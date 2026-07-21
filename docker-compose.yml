@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # ----------------- POSTGRESQL DATABASE -----------------
+  db:
+    image: postgres:15-alpine
+    container_name: cat_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: cat_diagnostics
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cat_diagnostics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------- REDIS CACHE & MESSAGING -----------------
+  redis:
+    image: redis:7-alpine
+    container_name: cat_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ----------------- FASTAPI BACKEND API -----------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: cat_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/cat_diagnostics
+      - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_FROM=workwiththarun@gmail.com
+      - SMTP_USER=workwiththarun@gmail.com
+      - SMTP_PASSWORD=cfic ibrv tjtl xzql
+    ports:
+      - "8000:8000"
+    volumes:
+      - report_data:/app/backend/static/reports
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ----------------- NEXT.JS FRONTEND DASHBOARD -----------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cat_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  report_data:
