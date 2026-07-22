@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, ActivityLog, User
+from backend.app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, ActivityLog, User, ManualInspection
 from backend.app.schemas.schemas import DiagnosticResultOut, DiagnosticRunRequest
 from backend.app.api.deps import get_current_user, require_role
 from backend.app.diagnostic_engine.engine import DiagnosticEngine
@@ -39,7 +39,49 @@ def run_diagnostic(
             detail="Machine is missing reference or current configurations. Cannot run diagnostics."
         )
 
-    # 4. Serialize to dict for engine
+    # 4. Fetch manual inspections for latest telemetry parameters
+    latest_inspection = db.query(ManualInspection).filter(
+        ManualInspection.machine_id == req.machine_id
+    ).order_by(ManualInspection.timestamp.desc()).first()
+
+    prev_inspection = db.query(ManualInspection).filter(
+        ManualInspection.machine_id == req.machine_id
+    ).order_by(ManualInspection.timestamp.desc()).offset(1).first()
+
+    if latest_inspection:
+        curr_engine_temp = latest_inspection.engine_temp
+        curr_battery_voltage = latest_inspection.battery_voltage
+        curr_oil_pressure = latest_inspection.oil_pressure
+        curr_hydraulic_pressure = latest_inspection.hydraulic_pressure
+        curr_operating_hours = latest_inspection.operating_hours
+        curr_error_codes = latest_inspection.error_codes or []
+        curr_observations = latest_inspection.observations or "None"
+    else:
+        curr_engine_temp = curr.temperature
+        curr_battery_voltage = 24.0  # nominal default
+        curr_oil_pressure = 40.0    # nominal default
+        curr_hydraulic_pressure = 3000.0  # nominal default
+        curr_operating_hours = machine.operating_hours or 1200.0
+        curr_error_codes = []
+        curr_observations = "None"
+
+    if prev_inspection:
+        old_engine_temp = f"{prev_inspection.engine_temp} °C"
+        old_battery_voltage = f"{prev_inspection.battery_voltage} V"
+        old_oil_pressure = f"{prev_inspection.oil_pressure} PSI"
+        old_hydraulic_pressure = f"{prev_inspection.hydraulic_pressure} PSI"
+        old_operating_hours = f"{prev_inspection.operating_hours} hrs"
+        old_error_codes = ", ".join(prev_inspection.error_codes) if prev_inspection.error_codes else "None"
+    else:
+        # Requirement 4: Default Previous Value Data for Telemetry & Historical Audit
+        old_engine_temp = "44.8 °C"
+        old_battery_voltage = "24.0 V"
+        old_oil_pressure = "40.0 PSI"
+        old_hydraulic_pressure = "3000.0 PSI"
+        old_operating_hours = f"{max(0, curr_operating_hours - 24.0):.1f} hrs" if curr_operating_hours else "1200.0 hrs"
+        old_error_codes = "None"
+
+    # 5. Serialize to dict for diagnostic engine
     ref_dict = {
         "firmware": ref.firmware,
         "plc_version": ref.plc_version,
@@ -60,14 +102,162 @@ def run_diagnostic(
         "communication_ports": curr.communication_ports,
         "installed_modules": curr.installed_modules,
         "sensor_count": curr.sensor_count,
-        "temperature": curr.temperature,
+        "temperature": curr_engine_temp,
         "power_status": curr.power_status
     }
 
-    # 5. Execute diagnostic engine (Deterministic Python logic)
-    diag_data = DiagnosticEngine.run_diagnostics(ref_dict, curr_dict)
+    # Initialize diagnostic result dict focused purely on Real-Time Telemetry
+    diag_data = {
+        "metrics": {
+            "temperature": curr_engine_temp,
+            "power_status": curr.power_status
+        }
+    }
 
-    # 5b. Fetch past historical inspection records for AI time-series trend analysis
+    # 6. Telemetry comparison table & Real-Time Telemetry anomaly detection
+    telemetry_comparison = [
+        {
+            "parameter": "Operating Hours",
+            "normal": "--",
+            "realtime": f"{curr_operating_hours} hrs",
+            "old": old_operating_hours,
+            "status": "Info"
+        },
+        {
+            "parameter": "Engine Temperature",
+            "normal": "< 85 °C",
+            "realtime": f"{curr_engine_temp} °C",
+            "old": old_engine_temp,
+            "status": "Critical" if curr_engine_temp > 95.0 else "Warning" if curr_engine_temp > 85.0 else "Matched"
+        },
+        {
+            "parameter": "Battery Voltage",
+            "normal": ">= 23.5 V",
+            "realtime": f"{curr_battery_voltage} V",
+            "old": old_battery_voltage,
+            "status": "Critical" if curr_battery_voltage < 22.0 else "Warning" if curr_battery_voltage < 23.5 else "Matched"
+        },
+        {
+            "parameter": "Oil Pressure",
+            "normal": ">= 35 PSI",
+            "realtime": f"{curr_oil_pressure} PSI",
+            "old": old_oil_pressure,
+            "status": "Critical" if curr_oil_pressure < 25.0 else "Warning" if curr_oil_pressure < 35.0 else "Matched"
+        },
+        {
+            "parameter": "Hydraulic Pressure",
+            "normal": ">= 2200 PSI",
+            "realtime": f"{curr_hydraulic_pressure} PSI",
+            "old": old_hydraulic_pressure,
+            "status": "Warning" if curr_hydraulic_pressure < 2200.0 else "Matched"
+        },
+        {
+            "parameter": "Error Codes",
+            "normal": "No active codes",
+            "realtime": ", ".join(curr_error_codes) if curr_error_codes else "None",
+            "old": old_error_codes,
+            "status": "Warning" if curr_error_codes else "Matched"
+        }
+    ]
+
+    telemetry_deductions = 0
+    telemetry_issues = []
+
+    if curr_engine_temp > 95.0:
+        telemetry_deductions += 30
+        telemetry_issues.append({
+            "parameter": "Engine Temperature",
+            "severity": "Critical",
+            "expected": "< 85 °C",
+            "current": f"{curr_engine_temp} °C",
+            "message": f"Engine temperature critical overheat: {curr_engine_temp}°C (Nominal < 85°C)."
+        })
+    elif curr_engine_temp > 85.0:
+        telemetry_deductions += 15
+        telemetry_issues.append({
+            "parameter": "Engine Temperature",
+            "severity": "Warning",
+            "expected": "< 85 °C",
+            "current": f"{curr_engine_temp} °C",
+            "message": f"Engine temperature elevated: {curr_engine_temp}°C (Nominal < 85°C)."
+        })
+
+    if curr_battery_voltage < 22.0:
+        telemetry_deductions += 25
+        telemetry_issues.append({
+            "parameter": "Battery Voltage",
+            "severity": "Critical",
+            "expected": ">= 23.5 V",
+            "current": f"{curr_battery_voltage} V",
+            "message": f"Low battery system voltage: {curr_battery_voltage}V (Nominal >= 23.5V)."
+        })
+    elif curr_battery_voltage < 23.5:
+        telemetry_deductions += 15
+        telemetry_issues.append({
+            "parameter": "Battery Voltage",
+            "severity": "Warning",
+            "expected": ">= 23.5 V",
+            "current": f"{curr_battery_voltage} V",
+            "message": f"Slightly low battery voltage: {curr_battery_voltage}V (Nominal >= 23.5V)."
+        })
+
+    if curr_oil_pressure < 25.0:
+        telemetry_deductions += 25
+        telemetry_issues.append({
+            "parameter": "Oil Pressure",
+            "severity": "Critical",
+            "expected": ">= 35 PSI",
+            "current": f"{curr_oil_pressure} PSI",
+            "message": f"Critical low engine oil pressure: {curr_oil_pressure} PSI (Nominal >= 35 PSI)."
+        })
+    elif curr_oil_pressure < 35.0:
+        telemetry_deductions += 15
+        telemetry_issues.append({
+            "parameter": "Oil Pressure",
+            "severity": "Warning",
+            "expected": ">= 35 PSI",
+            "current": f"{curr_oil_pressure} PSI",
+            "message": f"Sub-nominal engine oil pressure: {curr_oil_pressure} PSI (Nominal >= 35 PSI)."
+        })
+
+    if curr_hydraulic_pressure < 2200.0:
+        telemetry_deductions += 15
+        telemetry_issues.append({
+            "parameter": "Hydraulic Pressure",
+            "severity": "Warning",
+            "expected": ">= 2200 PSI",
+            "current": f"{curr_hydraulic_pressure} PSI",
+            "message": f"Low auxiliary hydraulic pressure: {curr_hydraulic_pressure} PSI (Nominal >= 2200 PSI)."
+        })
+
+    if curr_error_codes:
+        for err in curr_error_codes:
+            telemetry_deductions += 15
+            telemetry_issues.append({
+                "parameter": "Diagnostic Code",
+                "severity": "Warning",
+                "expected": "No active codes",
+                "current": err,
+                "message": f"Active ECU/PLC diagnostic fault code recorded: {err}."
+            })
+
+    diag_data["issues"] = telemetry_issues
+    diag_data["health_score"] = max(0, 100 - telemetry_deductions)
+
+    has_critical = any(i.get("severity") == "Critical" for i in diag_data["issues"])
+    has_warning = any(i.get("severity") == "Warning" for i in diag_data["issues"])
+
+    if has_critical or diag_data["health_score"] < 50:
+        diag_data["status"] = "Fault"
+    elif has_warning or diag_data["health_score"] < 85:
+        diag_data["status"] = "Warning"
+    else:
+        diag_data["status"] = "Healthy"
+
+    diag_data["telemetry_comparison"] = telemetry_comparison
+    diag_data["observations"] = curr_observations
+
+    # 6c. Fetch past historical inspection records for AI time-series trend analysis
     past_results = db.query(DiagnosticResult).filter(
         DiagnosticResult.machine_id == req.machine_id
     ).order_by(DiagnosticResult.timestamp.desc()).limit(10).all()

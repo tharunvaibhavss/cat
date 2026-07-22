@@ -17,6 +17,8 @@ __pycache__/
 *.log
 
 # Environment & local OS files
+.env
+.env.*
 .DS_Store
 Thumbs.db
 backend/static/reports/*.pdf

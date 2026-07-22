@@ -304,7 +304,7 @@ export default function MachinesPage() {
             <span>EXPORT CSV</span>
           </button>
           
-          {activeRole === 'Administrator' && (
+          {['Administrator', 'Maintenance Engineer', 'Supervisor'].includes(activeRole || '') && (
             <button
               onClick={() => { resetForm(); setIsAddOpen(true); }}
               className="flex items-center space-x-1 bg-primary hover:bg-primary-dark text-black rounded px-3 py-2 text-xs font-bold shadow-sm"

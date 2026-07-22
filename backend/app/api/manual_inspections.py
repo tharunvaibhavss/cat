@@ -19,6 +19,11 @@ def create_manual_inspection(
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
 
+    # Fetch previous manual inspection BEFORE adding the new record
+    prev_inspection = db.query(ManualInspection).filter(
+        ManualInspection.machine_id == req.machine_id
+    ).order_by(ManualInspection.timestamp.desc()).first()
+
     inspection = ManualInspection(
         machine_id=req.machine_id,
         timestamp=datetime.utcnow(),
@@ -73,6 +78,66 @@ def create_manual_inspection(
     health_score = max(0, 100 - health_deductions)
     diag_status = "Healthy" if health_score >= 85 else ("Warning" if health_score >= 50 else "Fault")
 
+    if prev_inspection:
+        old_engine_temp = f"{prev_inspection.engine_temp} °C"
+        old_battery_voltage = f"{prev_inspection.battery_voltage} V"
+        old_oil_pressure = f"{prev_inspection.oil_pressure} PSI"
+        old_hydraulic_pressure = f"{prev_inspection.hydraulic_pressure} PSI"
+        old_operating_hours = f"{prev_inspection.operating_hours} hrs"
+        old_error_codes = ", ".join(prev_inspection.error_codes) if prev_inspection.error_codes else "None"
+    else:
+        old_engine_temp = "N/A"
+        old_battery_voltage = "N/A"
+        old_oil_pressure = "N/A"
+        old_hydraulic_pressure = "N/A"
+        old_operating_hours = "N/A"
+        old_error_codes = "N/A"
+
+    telemetry_comparison = [
+        {
+            "parameter": "Operating Hours",
+            "normal": "--",
+            "realtime": f"{req.operating_hours} hrs",
+            "old": old_operating_hours,
+            "status": "Info"
+        },
+        {
+            "parameter": "Engine Temperature",
+            "normal": "< 85 °C",
+            "realtime": f"{req.engine_temp} °C",
+            "old": old_engine_temp,
+            "status": "Critical" if req.engine_temp > 95.0 else "Warning" if req.engine_temp > 85.0 else "Matched"
+        },
+        {
+            "parameter": "Battery Voltage",
+            "normal": ">= 23.5 V",
+            "realtime": f"{req.battery_voltage} V",
+            "old": old_battery_voltage,
+            "status": "Critical" if req.battery_voltage < 22.0 else "Warning" if req.battery_voltage < 23.5 else "Matched"
+        },
+        {
+            "parameter": "Oil Pressure",
+            "normal": ">= 35 PSI",
+            "realtime": f"{req.oil_pressure} PSI",
+            "old": old_oil_pressure,
+            "status": "Critical" if req.oil_pressure < 25.0 else "Warning" if req.oil_pressure < 35.0 else "Matched"
+        },
+        {
+            "parameter": "Hydraulic Pressure",
+            "normal": ">= 2200 PSI",
+            "realtime": f"{req.hydraulic_pressure} PSI",
+            "old": old_hydraulic_pressure,
+            "status": "Warning" if req.hydraulic_pressure < 2200.0 else "Matched"
+        },
+        {
+            "parameter": "Error Codes",
+            "normal": "No active codes",
+            "realtime": ", ".join(req.error_codes) if req.error_codes else "None",
+            "old": old_error_codes,
+            "status": "Warning" if req.error_codes else "Matched"
+        }
+    ]
+
     diag_result = DiagnosticResult(
         machine_id=req.machine_id,
         timestamp=datetime.utcnow(),
@@ -90,7 +155,8 @@ def create_manual_inspection(
                 "oil_pressure": req.oil_pressure,
                 "hydraulic_pressure": req.hydraulic_pressure
             },
-            "observations": req.observations
+            "telemetry_comparison": telemetry_comparison,
+            "observations": req.observations or "None"
         },
         notes=f"Manual telemetry submitted by technician {current_user.username} ({current_user.employee_id})."
     )

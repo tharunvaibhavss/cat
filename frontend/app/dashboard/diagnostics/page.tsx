@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { machineService, diagnosticService, llmService, reportService, api } from '@/services/api';
+import { machineService, diagnosticService, llmService, reportService, manualInspectionService, api } from '@/services/api';
 import { useAuth } from '@/components/Providers';
 import { 
   Play, 
@@ -21,8 +21,10 @@ import {
   Activity,
   FileDown,
   Edit,
+  Edit3,
   Save,
-  X
+  X,
+  Sliders
 } from 'lucide-react';
 
 export default function DiagnosticsPage() {
@@ -32,6 +34,18 @@ export default function DiagnosticsPage() {
   
   // Diagnostic run state
   const [activeResult, setActiveResult] = useState<any>(null);
+
+  // Real-Time Telemetry Edit states
+  const [isRealtimeEditOpen, setIsRealtimeEditOpen] = useState(false);
+  const [realtimeForm, setRealtimeForm] = useState({
+    operating_hours: 5890.0,
+    engine_temp: 68.2,
+    battery_voltage: 24.0,
+    oil_pressure: 40.0,
+    hydraulic_pressure: 3000.0,
+    error_codes: '',
+    observations: 'Manual real-time telemetry update from Diagnostic Bench'
+  });
 
   // Manual Telemetry Edit states
   const [isEditingTelemetry, setIsEditingTelemetry] = useState(false);
@@ -101,6 +115,83 @@ export default function DiagnosticsPage() {
       alert(err.response?.data?.detail || 'Error saving telemetry changes');
     }
   });
+
+  // Real-Time Telemetry creation mutation
+  const createManualInspectionMutation = useMutation({
+    mutationFn: manualInspectionService.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connectedMachines'] });
+      setIsRealtimeEditOpen(false);
+      // Automatically re-run diagnostics so telemetry comparison and AI workbook update live
+      if (selectedMachineId) {
+        runDiagnosticMutation.mutate(selectedMachineId);
+      }
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || 'Error saving real-time telemetry values');
+    }
+  });
+
+  const openRealtimeEdit = () => {
+    if (!selectedMachine) return;
+    
+    let opHours = selectedMachine.operating_hours || 5890.0;
+    let engTemp = 68.2;
+    let battVolt = 24.0;
+    let oilPress = 40.0;
+    let hydPress = 3000.0;
+    let errCodesStr = '';
+    let obs = 'Manual real-time telemetry update from Diagnostic Bench';
+
+    if (activeResult?.details?.telemetry_comparison) {
+      activeResult.details.telemetry_comparison.forEach((item: any) => {
+        const valStr = String(item.realtime || '');
+        const numVal = parseFloat(valStr.replace(/[^0-9.]/g, ''));
+        if (item.parameter === 'Operating Hours' && !isNaN(numVal)) opHours = numVal;
+        if (item.parameter === 'Engine Temperature' && !isNaN(numVal)) engTemp = numVal;
+        if (item.parameter === 'Battery Voltage' && !isNaN(numVal)) battVolt = numVal;
+        if (item.parameter === 'Oil Pressure' && !isNaN(numVal)) oilPress = numVal;
+        if (item.parameter === 'Hydraulic Pressure' && !isNaN(numVal)) hydPress = numVal;
+        if (item.parameter === 'Error Codes') {
+          errCodesStr = valStr === 'None' ? '' : valStr;
+        }
+      });
+      if (activeResult?.details?.observations && activeResult.details.observations !== 'None') {
+        obs = activeResult.details.observations;
+      }
+    }
+
+    setRealtimeForm({
+      operating_hours: opHours,
+      engine_temp: engTemp,
+      battery_voltage: battVolt,
+      oil_pressure: oilPress,
+      hydraulic_pressure: hydPress,
+      error_codes: errCodesStr,
+      observations: obs
+    });
+    setIsRealtimeEditOpen(true);
+  };
+
+  const handleSaveRealtimeTelemetry = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMachineId) return;
+
+    const parsedErrorCodes = realtimeForm.error_codes
+      ? realtimeForm.error_codes.split(',').map((s) => s.trim()).filter((s) => s !== '' && s !== 'None')
+      : [];
+
+    createManualInspectionMutation.mutate({
+      machine_id: selectedMachineId,
+      operating_hours: Number(realtimeForm.operating_hours),
+      engine_temp: Number(realtimeForm.engine_temp),
+      battery_voltage: Number(realtimeForm.battery_voltage),
+      oil_pressure: Number(realtimeForm.oil_pressure),
+      hydraulic_pressure: Number(realtimeForm.hydraulic_pressure),
+      error_codes: parsedErrorCodes,
+      observations: realtimeForm.observations || 'Manual real-time telemetry edit from Diagnostic Bench'
+    });
+  };
 
   const handleDownloadPdf = async (id: number, title: string) => {
     try {
@@ -292,167 +383,138 @@ ${aiAnalysis.troubleshooting_steps}
       {selectedMachine ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* LEFT COLUMN: CONFIGURATION DIFF VIEWER */}
-          <div className="card-industrial bg-white p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-150 pb-1.5">
-              <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest flex items-center">
-                <Layers className="w-4 h-4 mr-2 text-primary-dark" />
-                Machine Configuration Audit Reader
-              </h3>
-              
-              {/* Telemetry Edit Actions */}
-              {['Administrator', 'Maintenance Engineer'].includes(activeRole || '') && (
-                isEditingTelemetry ? (
-                  <div className="flex space-x-2">
+          {/* LEFT COLUMN: REAL-TIME TELEMETRY & HISTORICAL AUDIT */}
+          <div className="space-y-6">
+            <div className="card-industrial bg-white p-5 space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-150 pb-1.5 flex-wrap gap-2">
+                <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest flex items-center">
+                  <Activity className="w-4 h-4 mr-2 text-primary-dark" />
+                  Real-Time Telemetry &amp; Historical Audit
+                </h3>
+                <div className="flex items-center space-x-2">
+                  {activeResult && (
+                    <span className={`badge text-[10px] px-2 py-0.5 font-black ${
+                      activeResult.status === 'Healthy' ? 'badge-green' : activeResult.status === 'Warning' ? 'badge-orange' : 'badge-red'
+                    }`}>
+                      {activeResult.status?.toUpperCase()}
+                    </span>
+                  )}
+                  <button
+                    onClick={openRealtimeEdit}
+                    className="flex items-center space-x-1 bg-primary hover:bg-primary-dark text-black px-2.5 py-1 rounded text-[11px] font-extrabold transition-all shadow-xs cursor-pointer uppercase tracking-wider"
+                    title="Manually edit real-time telemetry values"
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>EDIT REAL-TIME VALUES</span>
+                  </button>
+                </div>
+              </div>
+
+              {activeResult?.details?.telemetry_comparison ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs text-left border border-gray-200 rounded">
+                      <thead>
+                        <tr className="bg-gray-900 text-[10px] text-white font-bold uppercase tracking-wider">
+                          <th className="p-3">Telemetry Parameter</th>
+                          <th className="p-3">Normal / Baseline</th>
+                          <th className="p-3">Real-Time Value</th>
+                          <th className="p-3">Previous Value</th>
+                          <th className="p-3">Diagnostic</th>
+                          <th className="p-3 text-right">Edit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 font-mono">
+                        {activeResult.details.telemetry_comparison.map((item: any, idx: number) => {
+                          const isWarning = item.status === 'Warning';
+                          const isCritical = item.status === 'Critical';
+                          const rowClass = isCritical
+                            ? 'bg-red-50 text-red-950'
+                            : isWarning
+                              ? 'bg-orange-50 text-orange-950'
+                              : '';
+                          return (
+                            <tr key={idx} className={rowClass}>
+                              <td className="p-3 font-sans font-semibold text-gray-800">{item.parameter}</td>
+                              <td className="p-3 text-gray-500">{item.normal}</td>
+                              <td className={`p-3 font-bold ${isCritical ? 'text-red-700' : isWarning ? 'text-orange-700' : 'text-gray-900'}`}>
+                                {item.realtime}
+                              </td>
+                              <td className="p-3 text-gray-500">{item.old}</td>
+                              <td className="p-3 font-black">
+                                {isCritical ? (
+                                  <span className="text-red-600 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> CRITICAL
+                                  </span>
+                                ) : isWarning ? (
+                                  <span className="text-orange-500 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> WARNING
+                                  </span>
+                                ) : item.status === 'Matched' ? (
+                                  <span className="text-green-600 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> NOMINAL
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">INFO</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right">
+                                <button
+                                  onClick={openRealtimeEdit}
+                                  className="text-gray-400 hover:text-black p-1 rounded transition-colors"
+                                  title={`Edit ${item.parameter}`}
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {activeResult?.details?.observations && activeResult?.details?.observations !== 'None' && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-amber-800 uppercase tracking-wider mb-1">Operator Observations</p>
+                        <p className="text-amber-900 italic">"{activeResult.details.observations}"</p>
+                      </div>
+                      <button
+                        onClick={openRealtimeEdit}
+                        className="text-amber-700 hover:text-amber-900 text-[10px] font-bold underline ml-2"
+                      >
+                        Edit Notes
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-[10px] text-gray-400 uppercase font-mono">
+                    <span>* real-time values from latest manual inspection.</span>
                     <button
-                      onClick={handleSaveTelemetry}
-                      disabled={updateTelemetryMutation.isPending}
-                      className="flex items-center space-x-1 px-2.5 py-1 bg-success hover:bg-emerald-600 text-white rounded text-[10px] font-bold shadow-sm transition-all"
+                      onClick={openRealtimeEdit}
+                      className="text-primary-dark font-extrabold hover:underline cursor-pointer"
                     >
-                      <Save className="w-3.5 h-3.5" />
-                      <span>SAVE</span>
-                    </button>
-                    <button
-                      onClick={() => setIsEditingTelemetry(false)}
-                      className="flex items-center space-x-1 px-2.5 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold shadow-sm transition-all"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>CANCEL</span>
+                      [ Override Values ]
                     </button>
                   </div>
-                ) : (
+                </>
+              ) : (
+                <div className="py-10 text-center text-gray-400 flex flex-col items-center justify-center space-y-3">
+                  <Activity className="w-8 h-8 text-gray-300" />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider">Run diagnostics or edit real-time values</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Submit custom real-time sensor data or click Execute Diagnostics</p>
+                  </div>
                   <button
-                    onClick={startEditingTelemetry}
-                    className="flex items-center space-x-1 px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded text-[10px] font-bold shadow-sm transition-all"
+                    onClick={openRealtimeEdit}
+                    className="flex items-center space-x-1.5 bg-primary hover:bg-primary-dark text-black rounded px-4 py-2 text-xs font-black shadow-sm tracking-wider uppercase"
                   >
-                    <Edit className="w-3.5 h-3.5 text-gray-500" />
-                    <span>MANUAL EDIT</span>
+                    <Sliders className="w-4 h-4" />
+                    <span>MANUALLY EDIT REAL-TIME TELEMETRY</span>
                   </button>
-                )
+                </div>
               )}
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-xs text-left border border-gray-200 rounded">
-                <thead>
-                  <tr className="bg-gray-100 text-[10px] text-gray-500 font-bold uppercase tracking-wider border-b border-gray-200">
-                    <th className="p-3">Parameter</th>
-                    <th className="p-3">Reference Blueprint</th>
-                    <th className="p-3">Active Telemetry</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 font-mono">
-                  
-                  {/* Mapping static hardware configurations */}
-                  {[
-                    { label: 'Firmware Version', key: 'firmware' },
-                    { label: 'PLC Version', key: 'plc_version' },
-                    { label: 'CPU Architecture', key: 'cpu' },
-                    { label: 'RAM Memory', key: 'ram' },
-                    { label: 'Storage Size', key: 'storage' },
-                    { label: 'Sensor Count', key: 'sensor_count' },
-                  ].map((field) => {
-                    const mismatch = isMismatched(field.key);
-                    return (
-                      <tr key={field.key} className={mismatch ? 'bg-red-50 text-red-950 font-bold' : ''}>
-                        <td className="p-3 font-sans font-semibold text-gray-700">{field.label}</td>
-                        <td className="p-3">{selectedMachine.reference_config?.[field.key]}</td>
-                        <td className="p-3">
-                          {isEditingTelemetry ? (
-                            <input
-                              type={field.key === 'sensor_count' ? 'number' : 'text'}
-                              value={(telemetryForm as any)[field.key]}
-                              onChange={(e) => setTelemetryForm({ ...telemetryForm, [field.key]: e.target.value })}
-                              className="w-full px-2 py-1 border border-gray-300 rounded bg-white text-xs font-mono text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary-dark"
-                            />
-                          ) : (
-                            selectedMachine.current_config?.[field.key]
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {/* Ports & Modules (Arrays) */}
-                  {[
-                    { label: 'Communication Ports', key: 'communication_ports' },
-                    { label: 'Installed Modules', key: 'installed_modules' },
-                  ].map((field) => {
-                    const mismatch = isMismatched(field.key);
-                    return (
-                      <tr key={field.key} className={mismatch ? 'bg-red-50 text-red-950 font-bold' : ''}>
-                        <td className="p-3 font-sans font-semibold text-gray-700">{field.label}</td>
-                        <td className="p-3">{selectedMachine.reference_config?.[field.key]?.join(', ')}</td>
-                        <td className="p-3">
-                          {isEditingTelemetry ? (
-                            <input
-                              type="text"
-                              value={(telemetryForm as any)[field.key]}
-                              onChange={(e) => setTelemetryForm({ ...telemetryForm, [field.key]: e.target.value })}
-                              placeholder="comma-separated list"
-                              className="w-full px-2 py-1 border border-gray-300 rounded bg-white text-xs font-mono text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary-dark"
-                            />
-                          ) : (
-                            selectedMachine.current_config?.[field.key]?.join(', ')
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {/* Telemetry/Runtime stats */}
-                  <tr className={selectedMachine.current_config?.temperature >= 75 ? 'bg-orange-50 text-orange-950 font-bold' : ''}>
-                    <td className="p-3 font-sans font-semibold text-gray-700 flex items-center">
-                      <Thermometer className="w-3.5 h-3.5 mr-1 text-orange-600" />
-                      Operating Temp
-                    </td>
-                    <td className="p-3 text-gray-400">Under 70 C</td>
-                    <td className="p-3">
-                      {isEditingTelemetry ? (
-                        <div className="flex items-center space-x-1">
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={telemetryForm.temperature}
-                            onChange={(e) => setTelemetryForm({ ...telemetryForm, temperature: Number(e.target.value) })}
-                            className="w-20 px-2 py-1 border border-gray-300 rounded bg-white text-xs font-mono text-gray-900 focus:outline-none"
-                          />
-                          <span>C</span>
-                        </div>
-                      ) : (
-                        `${selectedMachine.current_config?.temperature} C`
-                      )}
-                    </td>
-                  </tr>
-
-                  <tr className={selectedMachine.current_config?.power_status !== 'Stable' ? 'bg-orange-50 text-orange-950 font-bold' : ''}>
-                    <td className="p-3 font-sans font-semibold text-gray-700 flex items-center">
-                      <Zap className="w-3.5 h-3.5 mr-1 text-yellow-600" />
-                      Power Supply
-                    </td>
-                    <td className="p-3 text-gray-400">Stable</td>
-                    <td className="p-3">
-                      {isEditingTelemetry ? (
-                        <select
-                          value={telemetryForm.power_status}
-                          onChange={(e) => setTelemetryForm({ ...telemetryForm, power_status: e.target.value })}
-                          className="w-full bg-white border border-gray-300 rounded p-1 text-xs text-gray-700 focus:outline-none"
-                        >
-                          <option value="Stable">Stable</option>
-                          <option value="Fluctuating">Fluctuating</option>
-                          <option value="Low Voltage">Low Voltage</option>
-                        </select>
-                      ) : (
-                        selectedMachine.current_config?.power_status
-                      )}
-                    </td>
-                  </tr>
-
-                </tbody>
-              </table>
-            </div>
-            <div className="text-[10px] text-gray-400 uppercase font-mono">
-              * highlighted parameters indicate discrepancies between active telemetry and original reference designs.
             </div>
           </div>
 
@@ -461,9 +523,16 @@ ${aiAnalysis.troubleshooting_steps}
             
             {/* 1. Diagnostic Run Status Card */}
             <div className="card-industrial bg-white p-5 space-y-4">
-              <h3 className="text-xs font-black text-gray-900 border-b border-gray-150 pb-1.5 uppercase tracking-widest flex items-center">
-                <Activity className="w-4 h-4 mr-2 text-primary-dark" />
-                Diagnostics Execution Console
+              <h3 className="text-xs font-black text-gray-900 border-b border-gray-150 pb-1.5 uppercase tracking-widest flex items-center justify-between">
+                <span className="flex items-center">
+                  <Activity className="w-4 h-4 mr-2 text-primary-dark" />
+                  Diagnostics Execution Console
+                </span>
+                {activeResult && (
+                  <span className="text-[10px] font-mono text-gray-400 font-bold">
+                    ID: #{activeResult.id}
+                  </span>
+                )}
               </h3>
 
               {activeResult ? (
@@ -488,24 +557,66 @@ ${aiAnalysis.troubleshooting_steps}
                     </div>
                   </div>
 
-                  {/* Specific issues list */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Detected Mismatches ({activeResult.details?.issues?.length || 0})</h4>
-                    <div className="space-y-2max-h-[160px] overflow-y-auto pr-1">
-                      {activeResult.details?.issues?.length > 0 ? (
-                        activeResult.details.issues.map((issue: any, index: number) => (
-                          <div key={index} className="p-3 bg-red-50/50 border border-red-100 rounded text-xs">
-                            <p className="font-bold text-red-950 uppercase">{issue.parameter} Mismatch</p>
-                            <p className="text-red-900 mt-1">{issue.message}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="p-3 bg-green-50 border border-green-150 rounded text-xs flex items-center text-green-800">
-                          <CheckCircle className="w-4 h-4 mr-2flex-shrink-0" />
-                          <span>ALL HARDWARE & FIRMWARE BLOCKS SECURELY MATCH BLUEPRINTS.</span>
-                        </div>
-                      )}
+                  {/* AI Operational Decision Banner */}
+                  {activeResult.details?.historical_evaluation && (
+                    <div className="p-3 bg-slate-900 text-white rounded text-xs space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono font-bold uppercase text-primary">
+                          AI Operational Decision
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 bg-gray-800 text-amber-300 rounded font-bold">
+                          {activeResult.details.historical_evaluation.urgency}
+                        </span>
+                      </div>
+                      <p className="font-extrabold tracking-wide text-xs text-white">
+                        {activeResult.details.historical_evaluation.status_display}
+                      </p>
+                      <p className="text-[11px] text-gray-300 leading-relaxed">
+                        {activeResult.details.historical_evaluation.recommendation}
+                      </p>
                     </div>
+                  )}
+
+                  {/* Combined Audit Breakdown: Real-Time Telemetry & Sensor Audit */}
+                  <div className="space-y-4">
+                    
+                    {/* Real-Time Telemetry & Sensor Audit */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h4 className="text-[11px] font-extrabold text-gray-800 uppercase tracking-wider flex items-center">
+                          <Activity className="w-3.5 h-3.5 mr-1.5 text-primary-dark" />
+                          Real-Time Telemetry &amp; Sensor Audit
+                        </h4>
+                        <span className="text-[10px] font-mono font-bold text-gray-500">
+                          ({activeResult.details?.telemetry_comparison?.length || 0} parameters)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs font-mono">
+                        {activeResult.details?.telemetry_comparison?.map((t: any, idx: number) => {
+                          const isNominal = t.status === 'Matched' || t.status === 'Info';
+                          const isCrit = t.status === 'Critical';
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`p-2 rounded border flex flex-col justify-between ${
+                                isCrit ? 'bg-red-50 border-red-200 text-red-950' : !isNominal ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-gray-50 border-gray-200 text-gray-800'
+                              }`}
+                            >
+                              <span className="text-[10px] font-sans font-bold text-gray-500 truncate">{t.parameter}</span>
+                              <div className="flex items-center justify-between mt-1">
+                                <span className="font-extrabold text-xs">{t.realtime}</span>
+                                <span className={`text-[9px] font-sans font-black px-1 py-0.5 rounded uppercase ${
+                                  isCrit ? 'bg-red-600 text-white' : !isNominal ? 'bg-orange-500 text-white' : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {isNominal ? 'NOMINAL' : t.status.toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Actions buttons for AI & PDF */}
@@ -634,6 +745,219 @@ ${aiAnalysis.troubleshooting_steps}
           <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
             Choose a connected Caterpillar machine from the selector bar to view its telemetry, read configurations, and perform diagnostics.
           </p>
+        </div>
+      )}
+
+      {/* ----------------- EDIT REAL-TIME TELEMETRY MODAL ----------------- */}
+      {isRealtimeEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-lg shadow-2xl border border-gray-200 w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="bg-gray-900 text-white p-4 flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <Sliders className="w-5 h-5 text-primary" />
+                <h3 className="font-extrabold text-sm uppercase tracking-wider">
+                  Edit Real-Time Telemetry — {selectedMachine?.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsRealtimeEditOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSaveRealtimeTelemetry} className="p-5 space-y-4 overflow-y-auto">
+              <p className="text-xs text-gray-600 font-medium">
+                Manually update real-time sensor &amp; inspection telemetry parameters. Saving will record a new inspection log entry and immediately re-evaluate live diagnostics.
+              </p>
+
+              {/* Quick Presets */}
+              <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                  Quick Simulation Presets:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRealtimeForm({
+                      operating_hours: selectedMachine?.operating_hours || 5890.0,
+                      engine_temp: 68.2,
+                      battery_voltage: 24.0,
+                      oil_pressure: 40.0,
+                      hydraulic_pressure: 3000.0,
+                      error_codes: '',
+                      observations: 'All system parameters nominal baseline'
+                    })}
+                    className="text-[11px] font-bold bg-green-100 hover:bg-green-200 text-green-800 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    🟢 Nominal Baseline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRealtimeForm(prev => ({
+                      ...prev,
+                      engine_temp: 98.5,
+                      observations: 'High engine temperature spike recorded under heavy loading conditions.'
+                    }))}
+                    className="text-[11px] font-bold bg-orange-100 hover:bg-orange-200 text-orange-800 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    🔥 Overheat (98.5°C)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRealtimeForm(prev => ({
+                      ...prev,
+                      oil_pressure: 22.0,
+                      hydraulic_pressure: 1950.0,
+                      observations: 'Low oil & hydraulic pressure detected in primary manifold.'
+                    }))}
+                    className="text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    ⚠️ Low Pressure (22 PSI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRealtimeForm(prev => ({
+                      ...prev,
+                      battery_voltage: 21.2,
+                      error_codes: 'ERR-302, ERR-404',
+                      observations: 'Low battery voltage and multiple ECU fault codes triggered.'
+                    }))}
+                    className="text-[11px] font-bold bg-red-100 hover:bg-red-200 text-red-800 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    🚨 Battery &amp; ECU Fault
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Inputs Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Operating Hours (hrs)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={realtimeForm.operating_hours}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, operating_hours: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Engine Temperature (°C)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={realtimeForm.engine_temp}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, engine_temp: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                  <span className="text-[10px] text-gray-400">Nominal &lt; 85 °C</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Battery Voltage (V)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={realtimeForm.battery_voltage}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, battery_voltage: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                  <span className="text-[10px] text-gray-400">Nominal &gt;= 23.5 V</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Oil Pressure (PSI)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={realtimeForm.oil_pressure}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, oil_pressure: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                  <span className="text-[10px] text-gray-400">Nominal &gt;= 35 PSI</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Hydraulic Pressure (PSI)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={realtimeForm.hydraulic_pressure}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, hydraulic_pressure: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                  <span className="text-[10px] text-gray-400">Nominal &gt;= 2200 PSI</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Error Codes
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. ERR-302, ERR-104 (or leave empty)"
+                    value={realtimeForm.error_codes}
+                    onChange={(e) => setRealtimeForm({ ...realtimeForm, error_codes: e.target.value })}
+                    className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  />
+                  <span className="text-[10px] text-gray-400">Comma-separated fault codes</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Operator Observations
+                </label>
+                <textarea
+                  rows={2}
+                  value={realtimeForm.observations}
+                  onChange={(e) => setRealtimeForm({ ...realtimeForm, observations: e.target.value })}
+                  className="w-full bg-white border border-gray-300 rounded p-2 text-xs font-sans text-gray-900 focus:ring-2 focus:ring-primary focus:border-black"
+                  placeholder="Add notes or field observations..."
+                />
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="pt-3 border-t border-gray-200 flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsRealtimeEditOpen(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-xs font-bold transition-all uppercase cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createManualInspectionMutation.isPending}
+                  className="flex items-center space-x-1.5 bg-primary hover:bg-primary-dark text-black px-5 py-2 rounded text-xs font-black shadow-sm transition-all disabled:opacity-50 uppercase tracking-wider cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{createManualInspectionMutation.isPending ? 'Saving...' : 'Save & Re-Run Diagnostics'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

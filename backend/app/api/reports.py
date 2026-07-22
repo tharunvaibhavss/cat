@@ -100,18 +100,6 @@ def generate_report(
             "installed_modules": ref.installed_modules,
             "sensor_count": ref.sensor_count
         },
-        current_config={
-            "firmware": curr.firmware,
-            "plc_version": curr.plc_version,
-            "cpu": curr.cpu,
-            "ram": curr.ram,
-            "storage": curr.storage,
-            "communication_ports": curr.communication_ports,
-            "installed_modules": curr.installed_modules,
-            "sensor_count": curr.sensor_count,
-            "temperature": curr.temperature,
-            "power_status": curr.power_status
-        },
         diagnostic_result=result.details,
         llm_analysis=ai_analysis,
         engineer_name=current_user.username

@@ -54,7 +54,6 @@ class ReportGenerator:
         file_path: str,
         machine_info: Dict[str, Any],
         reference_config: Dict[str, Any],
-        current_config: Dict[str, Any],
         diagnostic_result: Dict[str, Any],
         llm_analysis: Dict[str, str],
         engineer_name: str
@@ -203,60 +202,101 @@ class ReportGenerator:
         story.append(meta_table)
         story.append(Spacer(1, 15))
 
-        # 3. Configuration Comparison Table
-        story.append(Paragraph("System Hardware & Firmware Configuration Audit", h1_style))
-        story.append(Paragraph("Below is a side-by-side comparison of the active telemetry and local software modules against original factory reference parameters.", body_style))
+        # 3. Factory Reference Blueprint Specifications Table (Requirement 2)
+        story.append(Paragraph("Factory Reference Blueprint Specifications", h1_style))
+        story.append(Paragraph("Below is the OEM baseline factory reference configuration for this equipment model.", body_style))
         story.append(Spacer(1, 5))
 
-        # Build comparison grid
+        # Build 2-column Factory Reference table
         comp_data = [
             [
-                Paragraph("<b>Parameter</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
-                Paragraph("<b>Factory Reference</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
-                Paragraph("<b>Current Machine</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
-                Paragraph("<b>Audit Status</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white))
+                Paragraph("<b>Specification Parameter</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
+                Paragraph("<b>Factory Reference Blueprint</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white))
             ]
         ]
 
-        def get_audit_badge(param_name: str) -> Paragraph:
-            for iss in diagnostic_result.get("issues", []):
-                if iss["parameter"].lower() == param_name.lower() or (param_name == "Operating Temperature" and iss["parameter"] == "Operating Temperature"):
-                    sev = iss["severity"]
-                    return Paragraph(f"<font color='{alert_red.hexval() if sev=='Critical' else alert_orange.hexval()}'><b>MISMATCH ({sev.upper()})</b></font>", body_style)
-            return Paragraph("<font color='green'><b>MATCHED</b></font>", body_style)
-
-        # Main configuration keys to list
         config_rows = [
-            ("Firmware Version", reference_config.get("firmware"), current_config.get("firmware")),
-            ("PLC Version", reference_config.get("plc_version"), current_config.get("plc_version")),
-            ("CPU Architecture", reference_config.get("cpu"), current_config.get("cpu")),
-            ("RAM (Memory)", reference_config.get("ram"), current_config.get("ram")),
-            ("Storage", reference_config.get("storage"), current_config.get("storage")),
-            ("Sensor Count", str(reference_config.get("sensor_count")), str(current_config.get("sensor_count"))),
-            ("Communication Ports", ", ".join(reference_config.get("communication_ports", [])), ", ".join(current_config.get("communication_ports", []))),
-            ("Installed Modules", ", ".join(reference_config.get("installed_modules", [])), ", ".join(current_config.get("installed_modules", []))),
-            ("Operating Temperature", "Under 70 C", f"{current_config.get('temperature', 45.0)} C"),
-            ("Power Supply Status", "Stable", current_config.get("power_status", "Stable")),
+            ("Firmware Version Profile", str(reference_config.get("firmware", "N/A"))),
+            ("PLC Logic Controller Version", str(reference_config.get("plc_version", "N/A"))),
+            ("CPU Architecture", str(reference_config.get("cpu", "N/A"))),
+            ("RAM System Memory", str(reference_config.get("ram", "N/A"))),
+            ("Secondary Storage", str(reference_config.get("storage", "N/A"))),
+            ("OEM Sensor Nodes Count", f"{reference_config.get('sensor_count', 0)} active nodes"),
+            ("Communication Ports", ", ".join(reference_config.get("communication_ports", [])) if isinstance(reference_config.get("communication_ports"), list) else str(reference_config.get("communication_ports", "N/A"))),
+            ("Installed Modules", ", ".join(reference_config.get("installed_modules", [])) if isinstance(reference_config.get("installed_modules"), list) else str(reference_config.get("installed_modules", "N/A"))),
         ]
 
-        for label, ref_val, cur_val in config_rows:
+        for label, ref_val in config_rows:
             comp_data.append([
                 Paragraph(label, body_style),
-                Paragraph(str(ref_val), body_style),
-                Paragraph(str(cur_val), body_style),
-                get_audit_badge(label)
+                Paragraph(ref_val, body_style)
             ])
 
-        comp_table = Table(comp_data, colWidths=[120, 130, 130, 124])
+        comp_table = Table(comp_data, colWidths=[200, 304])
         comp_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), cat_dark),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CCCCCC")),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('PADDING', (0,0), (-1,-1), 5),
+            ('PADDING', (0,0), (-1,-1), 6),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
         ]))
         story.append(comp_table)
         story.append(Spacer(1, 15))
+
+        # 3b. Real-Time Telemetry & Historical Audit Table
+        telemetry_comp = diagnostic_result.get("telemetry_comparison")
+        if telemetry_comp:
+            story.append(Paragraph("Real-Time Telemetry & Historical Audit", h1_style))
+            story.append(Paragraph("Side-by-side analysis of real-time telemetry metrics against design baseline standards and historical values from previous logs.", body_style))
+            story.append(Spacer(1, 5))
+
+            tel_data = [
+                [
+                    Paragraph("<b>Telemetry Parameter</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
+                    Paragraph("<b>Design Baseline</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
+                    Paragraph("<b>Real-Time Value</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
+                    Paragraph("<b>Previous Value</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)),
+                    Paragraph("<b>Status</b>", ParagraphStyle("TH", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white))
+                ]
+            ]
+
+            for item in telemetry_comp:
+                status_str = item.get("status", "Matched")
+                if status_str == "Critical":
+                    status_para = Paragraph(f"<font color='{alert_red.hexval()}'><b>CRITICAL</b></font>", body_style)
+                elif status_str == "Warning":
+                    status_para = Paragraph(f"<font color='{alert_orange.hexval()}'><b>WARNING</b></font>", body_style)
+                elif status_str == "Matched":
+                    status_para = Paragraph(f"<font color='{alert_green.hexval()}'><b>NOMINAL</b></font>", body_style)
+                else:
+                    status_para = Paragraph(f"<font color='#555555'><b>INFO</b></font>", body_style)
+
+                tel_data.append([
+                    Paragraph(item.get("parameter", ""), body_style),
+                    Paragraph(item.get("normal", ""), body_style),
+                    Paragraph(item.get("realtime", ""), body_style),
+                    Paragraph(item.get("old", ""), body_style),
+                    status_para
+                ])
+
+            tel_table = Table(tel_data, colWidths=[120, 100, 100, 100, 84])
+            tel_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), cat_dark),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CCCCCC")),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('PADDING', (0,0), (-1,-1), 5),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
+            ]))
+            story.append(tel_table)
+            story.append(Spacer(1, 15))
+
+            observations = diagnostic_result.get("observations")
+            if observations and observations != "None":
+                obs_block = []
+                obs_block.append(Paragraph("<b>Operator Observations:</b>", h2_style))
+                obs_block.append(Paragraph(f"<i>\"{observations}\"</i>", body_style))
+                story.append(KeepTogether(obs_block))
+                story.append(Spacer(1, 15))
 
         # 4. Detected Mismatches & Fault Log
         if diagnostic_result.get("issues"):

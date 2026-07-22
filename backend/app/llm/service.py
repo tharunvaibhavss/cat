@@ -21,7 +21,7 @@ class LLMService:
                 prompt = f"""
                 You are a senior industrial hardware systems engineer and diagnostic expert for Caterpillar (CAT) and Siemens machinery.
                 
-                Perform a root-cause analysis and generate maintenance recommendations based on the following diagnostic mismatch report.
+                Perform a root-cause analysis and generate maintenance recommendations based strictly on the following Real-Time Telemetry, Historical Audit, and Sensor parameters. Do NOT perform hardware blueprint audit comparisons.
                 
                 ### MACHINE INFO
                 Name: {machine_info.get('name')}
@@ -29,24 +29,21 @@ class LLMService:
                 Category: {machine_info.get('category')}
                 Manufacturer: {machine_info.get('manufacturer')}
                 
-                ### DIAGNOSTIC RESULTS (JSON)
+                ### REAL-TIME TELEMETRY & HISTORICAL AUDIT RESULTS (JSON)
                 {json.dumps(diagnostic_result, indent=2)}
                 
-                ### REFERENCE CONFIGURATION
+                ### FACTORY REFERENCE SPECIFICATIONS (REFERENCE ONLY)
                 {json.dumps(reference_config, indent=2)}
-                
-                ### CURRENT HARDWARE CONFIGURATION
-                {json.dumps(current_config, indent=2)}
                 
                 Generate a response containing the following sections. Ensure the tone is highly professional, technical, and safety-oriented. Return the output STRICTLY as a JSON object with the following keys (no markdown formatting around it, just raw JSON):
                 {{
-                    "machine_health": "Short assessment of overall safety and status",
-                    "root_cause_analysis": "Technical explanation of why these mismatches or warnings occurred and their hardware implications",
-                    "severity_explanation": "Explain why this severity level (Info/Warning/Critical) was assigned to the issues",
-                    "maintenance_recommendation": "Step-by-step physical maintenance steps (e.g. check connection, replace card, restore firmware)",
+                    "machine_health": "Short assessment of overall telemetry safety and status",
+                    "root_cause_analysis": "Technical explanation of real-time sensor anomalies, operating trends, and historical deviations",
+                    "severity_explanation": "Explain why this severity level (Info/Warning/Critical) was assigned to telemetry readings",
+                    "maintenance_recommendation": "Step-by-step physical maintenance steps (e.g. check fluid levels, inspect cooling loop, test sensors)",
                     "safety_notes": "Essential safety protocols (LOTO - Lockout/Tagout, PPE) to follow during service",
-                    "troubleshooting_steps": "Detailed CLI commands, calibration steps, or diagnostic procedures to verify the fix",
-                    "inspection_summary": "Summary of the whole inspection event for archival"
+                    "troubleshooting_steps": "Detailed sensor calibration steps, pressure checks, or diagnostic procedures to verify the fix",
+                    "inspection_summary": "Summary of the telemetry inspection event for archival"
                 }}
                 """
                 
@@ -72,67 +69,91 @@ class LLMService:
 
     @staticmethod
     def _generate_local_analysis(machine_info: Dict[str, Any], diagnostic: Dict[str, Any]) -> Dict[str, str]:
-        category = machine_info.get("category", "")
         status = diagnostic.get("status", "Healthy")
         health_score = diagnostic.get("health_score", 100)
         issues = diagnostic.get("issues", [])
+        telemetry_comp = diagnostic.get("telemetry_comparison", [])
+        observations = diagnostic.get("observations", "None")
 
+        non_nominal_telemetry = [t for t in telemetry_comp if t.get("status") in ["Warning", "Critical"]]
+        
         # Compile summaries
-        if status == "Healthy":
-            machine_health = "SYSTEM OPERATIONAL: All physical and logical configurations match the manufacturer's blueprint specifications."
-            root_cause = "No configuration deviations detected. Runtime conditions (thermal, power) are within optimal nominal thresholds."
-            severity = "Info: System state is within normal operating limits. No intervention required."
-            recommendations = "Perform routine scheduled checks according to the Caterpillar OMM (Operation and Maintenance Manual)."
-            safety = "Standard workshop safety protocols apply. No active electrical or structural work required."
-            troubleshooting = "Review diagnostic logs weekly. Maintain routine filters and fluid analysis (S·O·S fluid analysis for CAT excavators/loaders)."
-            summary = "Routine check completed. Configuration matched 100% against reference profile."
+        if status == "Healthy" and not issues and not non_nominal_telemetry:
+            machine_health = f"SYSTEM OPERATIONAL (Health: {health_score}% - HEALTHY): All real-time telemetry parameters and hardware blueprint configurations match manufacturer specifications."
+            root_cause = "No configuration or telemetry deviations detected. Real-time sensor readings (Engine Temperature, Battery Voltage, Oil Pressure, Hydraulic Pressure) are within nominal thresholds."
+            severity = "Nominal: All parameters are strictly within normal operating baselines."
+            recommendations = "Perform routine scheduled maintenance according to Caterpillar Operation & Maintenance Manual (OMM)."
+            safety = "Standard shop safety protocols apply (PPE, standard lockout/tagout during routine service)."
+            troubleshooting = "Review telemetry logs weekly. Perform scheduled S·O·S fluid sampling."
+            summary = f"Routine inspection completed for {machine_info.get('name')} ({machine_info.get('model')}). 100% baseline match."
         else:
             issue_summary_list = [f"- {iss['parameter']}: {iss['message']}" for iss in issues]
-            issues_str = "\n".join(issue_summary_list)
+            issues_str = "\n".join(issue_summary_list) if issue_summary_list else "No blueprint mismatches."
             
-            machine_health = f"DEGRADED / ACTION REQUIRED (Health: {health_score}%): Mismatches or anomalous sensor readings detected. Operational risks present."
-            root_cause = f"The diagnostic engine flagged the following configuration mismatches:\n{issues_str}\n\nTypical root causes include: field component replacement with unauthorized modules, out-of-date PLC programming flashes, firmware regression during maintenance cycles, or thermal cooling degradation."
+            telemetry_str_list = [f"- {t['parameter']}: {t['realtime']} (Normal: {t['normal']}, Status: {t['status']})" for t in telemetry_comp if t.get("status") in ["Warning", "Critical"]]
+            telemetry_summary = "\n".join(telemetry_str_list) if telemetry_str_list else "All real-time telemetry parameters within nominal ranges."
+
+            obs_txt = f"\nOperator Observations: '{observations}'" if observations and observations != "None" else ""
+
+            machine_health = f"ACTION REQUIRED (Health: {health_score}% - {status.upper()}): Real-time telemetry anomalies or configuration mismatches recorded.{obs_txt}"
             
-            severity = "Multiple parameters violate operational baselines. Mismatches in critical modules can trigger safety locks or invalid telemetry loops on the master PLC system."
+            root_cause = f"REAL-TIME TELEMETRY & HISTORICAL AUDIT ANALYSIS:\n{telemetry_summary}\n\nHARDWARE & SPECIFICATION AUDIT:\n{issues_str}\n\nROOT CAUSE DIAGNOSIS:\nReal-time sensor telemetry and audit logs indicate operational drift or hardware specification mismatch."
             
-            # Formulate action steps depending on what failed
+            severity = f"Severity: {status.upper()} level assigned. Parameters violate nominal operating safety envelopes. Continued unmitigated operation risks component degradation or emergency shutdown."
+            
+            # Formulate targeted action steps based on actual issues and telemetry
             rec_steps = []
             ts_steps = []
-            safety_precautions = ["Verify power source disconnect before opening PLC enclosures."]
+            safety_precautions = ["Verify master disconnect power isolation before inspecting electrical or hydraulic enclosures."]
             
-            has_temp = any(i["parameter"] == "Operating Temperature" for i in issues)
-            has_fw = any(i["parameter"] in ["Firmware Version", "PLC Version"] for i in issues)
-            has_hw = any(i["parameter"] in ["CPU Architecture", "RAM (Memory)", "Storage", "Installed Modules"] for i in issues)
-            has_power = any(i["parameter"] == "Power Supply Status" for i in issues)
+            has_temp = any(i.get("parameter") in ["Engine Temperature", "Operating Temperature"] for i in issues) or any(t.get("parameter") == "Engine Temperature" and t.get("status") != "Matched" for t in telemetry_comp)
+            has_battery = any(i.get("parameter") in ["Battery Voltage", "Power Supply Status"] for i in issues) or any(t.get("parameter") == "Battery Voltage" and t.get("status") != "Matched" for t in telemetry_comp)
+            has_oil = any(i.get("parameter") == "Oil Pressure" for i in issues) or any(t.get("parameter") == "Oil Pressure" and t.get("status") != "Matched" for t in telemetry_comp)
+            has_hyd = any(i.get("parameter") == "Hydraulic Pressure" for i in issues) or any(t.get("parameter") == "Hydraulic Pressure" and t.get("status") != "Matched" for t in telemetry_comp)
+            has_codes = any(i.get("parameter") == "Diagnostic Code" for i in issues) or any(t.get("parameter") == "Error Codes" and t.get("status") != "Matched" for t in telemetry_comp)
+            has_fw = any(i.get("parameter") in ["Firmware Version", "PLC Version"] for i in issues)
+            has_hw = any(i.get("parameter") in ["CPU Architecture", "RAM (Memory)", "Storage", "Installed Modules", "Sensor Count"] for i in issues)
 
             if has_temp:
-                rec_steps.append("Flush cooling heat-exchanger. Check coolant levels, auxiliary radiator fans, and verify hydraulic oil thermal status.")
-                ts_steps.append("Calibrate thermistor sensors using an external infrared thermometer. Verify radiator fan relay controls.")
-                safety_precautions.append("WARNING: High temperature components! Allow machine to idle and cool down for 20 minutes before inspecting thermal zones.")
+                rec_steps.append("Flush engine radiator & heat exchanger. Inspect coolant fill levels, water pump belt tension, and radiator fan shroud.")
+                ts_steps.append("Calibrate thermistor sensor using calibrated infrared thermal camera. Verify thermostat opening temperature (82°C-85°C).")
+                safety_precautions.append("CAUTION: Thermal Hazard! Allow engine and coolant lines to idle and cool down prior to cap removal.")
+
+            if has_battery:
+                rec_steps.append("Test battery cell voltage under load. Inspect alternator charging current and clean battery terminal connections.")
+                ts_steps.append("Use digital multimeter to measure 24V DC bus voltage drop under full starter motor crank.")
+                safety_precautions.append("ELECTRICAL HAZARD: Wear insulated gloves when checking battery terminals and high-current relays.")
+
+            if has_oil:
+                rec_steps.append("Check engine oil level and viscosity. Inspect oil filter housing and oil pump relief valve assembly.")
+                ts_steps.append("Attach mechanical pressure gauge to oil gallery test port to verify electronic sensor accuracy.")
+                safety_precautions.append("Hot oil under pressure! Ensure oil gallery ports are depressurized before connecting test fittings.")
+
+            if has_hyd:
+                rec_steps.append("Inspect hydraulic fluid level in sight glass. Check hydraulic pump manifold relief valves and filter differential pressure.")
+                ts_steps.append("Perform hydraulic flow test on main pump circuit. Verify pilot valve pressure regulator setting.")
+                safety_precautions.append("HIGH-PRESSURE FLUID INJECTION RISK: Depressurize hydraulic accumulators before loosening hydraulic lines.")
+
+            if has_codes:
+                rec_steps.append("Connect CAT Electronic Technician (CAT ET) or diagnostic scanner to clear ECU fault codes after servicing.")
+                ts_steps.append("Read active and logged DTC error codes. Perform wiring harness pinout continuity checks.")
 
             if has_fw:
-                rec_steps.append("Connect Service Tool (CAT ET or Siemens TIA Portal) and flash target firmware and PLC image profiles matching reference configurations.")
-                ts_steps.append("Run firmware CRC checksum validation command. Check serial console output for boot loader warnings.")
-                safety_precautions.append("Ensure constant power backup is connected to the PLC logic controllers during the programming and flashing sequence.")
+                rec_steps.append("Flash target OEM firmware and PLC software version using authorized Caterpillar service tool.")
+                ts_steps.append("Verify flash memory checksum CRC. Confirm PLC communication parameters.")
 
             if has_hw:
-                rec_steps.append("Audit active hardware modules. Replace generic CPU boards, RAM modules, or expansion cards with OEM-authorized parts.")
-                ts_steps.append("Perform full system diagnostic self-test from the service shell. Verify device tree registration of all local modules.")
-                safety_precautions.append("Follow Electrostatic Discharge (ESD) wrist strap procedures when handling exposed logic boards or memory chips.")
-
-            if has_power:
-                rec_steps.append("Check supply transformer lines, inspect local power filter capacitor banks, and verify voltage regulator calibration.")
-                ts_steps.append("Use digital multimeter to measure main 24V DC bus voltage at full load and trace voltage drops.")
-                safety_precautions.append("CRITICAL ELECTRICAL HAZARD: Wear insulated high-voltage gloves (Class 0) if measuring terminal rails directly.")
+                rec_steps.append("Replace non-matching or generic components with OEM-certified hardware modules.")
+                ts_steps.append("Perform full device tree registration scan in service console.")
 
             if not rec_steps:
-                rec_steps.append("Perform manual review of local interface and verify connectivity configurations.")
-                ts_steps.append("Restart local CPU unit and rerun diagnostics.")
+                rec_steps.append("Perform comprehensive manual inspection of machine components and verify sensor calibration.")
+                ts_steps.append("Rerun diagnostic bench verification cycle.")
 
             recommendations = "\n".join([f"{i+1}. {step}" for i, step in enumerate(rec_steps)])
             safety = "\n".join([f"- {s}" for s in safety_precautions])
             troubleshooting = "\n".join([f"{i+1}. {step}" for i, step in enumerate(ts_steps)])
-            summary = f"Completed diagnostic evaluation of {machine_info.get('name')} ({machine_info.get('model')}). Identified {len(issues)} configuration mismatch(es) resulting in a {status} designation."
+            summary = f"Completed Real-Time Telemetry & Historical Audit for {machine_info.get('name')} ({machine_info.get('model')}). Diagnostic Status: {status.upper()} (Health Score: {health_score}%)."
 
         return {
             "machine_health": machine_health,
