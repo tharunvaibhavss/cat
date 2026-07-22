@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #FFCC00;
+  --color-primary-dark: #E5B200;
+  --color-industrial-dark: #1A1A1A;
+  --color-industrial-charcoal: #2D2D2D;
+  --color-industrial-light: #F3F4F6;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+}
+
+:root {
+  --background: #F3F4F6;
+  --foreground: #1F2937;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom Utilities for Industrial Look */
+.card-industrial {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.sidebar-dark {
+  background-color: #1A1A1A;
+  color: #F3F4F6;
+}
+
+.sidebar-active-link {
+  background-color: #FFCC00;
+  color: #1A1A1A;
+}
+
+.table-header {
+  background-color: #2D2D2D;
+  color: #FFFFFF;
+}
+
+/* Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  line-height: 1;
+}
+
+.badge-green {
+  background-color: #DEF7EC;
+  color: #03543F;
+}
+
+.badge-yellow {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+.badge-orange {
+  background-color: #FFEDD5;
+  color: #C2410C;
+}
+
+.badge-red {
+  background-color: #FDE8E8;
+  color: #9B1C1C;
+}
+
+.badge-blue {
+  background-color: #E1EFFE;
+  color: #1E429F;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3F4F6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
