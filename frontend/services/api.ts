@@ -128,6 +128,42 @@ export const alertService = {
   }
 };
 
+// Notifications endpoints
+export const notificationService = {
+  registerToken: async (fcmToken: string, browserName?: string, deviceName?: string) => {
+    const response = await api.post('/notifications/register-token', {
+      fcm_token: fcmToken,
+      browser_name: browserName,
+      device_name: deviceName
+    });
+    return response.data;
+  },
+  removeToken: async (fcmToken: string) => {
+    const response = await api.post('/notifications/remove-token', { fcm_token: fcmToken });
+    return response.data;
+  },
+  getSettings: async () => {
+    const response = await api.get('/notifications/settings');
+    return response.data;
+  },
+  updateSettings: async (settings: any) => {
+    const response = await api.put('/notifications/settings', settings);
+    return response.data;
+  },
+  getHistory: async () => {
+    const response = await api.get('/notifications/history');
+    return response.data;
+  },
+  markRead: async (id: number) => {
+    const response = await api.post(`/notifications/history/${id}/read`);
+    return response.data;
+  },
+  testNotification: async () => {
+    const response = await api.post('/notifications/test');
+    return response.data;
+  }
+};
+
 // Machines endpoints
 export const machineService = {
   list: async (filters?: { category?: string; status?: string; search?: string }) => {

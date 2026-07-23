@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.database.connection import engine, Base
 from backend.app.api import (
     auth, users, machines, diagnostic, llm, reports, dashboard, alerts,
-    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry
+    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications
 )
 from backend.app.sample_data.seed import seed_database
 from backend.app.database.connection import SessionLocal
@@ -64,6 +64,7 @@ app.include_router(llm.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 # Core Feature & Telemetry Ingestion Routers
 app.include_router(manual_inspections.router, prefix="/api")

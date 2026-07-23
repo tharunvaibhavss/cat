@@ -121,6 +121,9 @@ def ingest_remote_telemetry(
             is_resolved=False
         )
         db.add(new_alert)
+        db.flush()
+        from backend.app.services.notification_service import NotificationService
+        NotificationService.notify_alert_created(db, new_alert, "Critical")
 
     log = ActivityLog(
         employee_id="REMOTE-IOT-GW",

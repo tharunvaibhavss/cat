@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { authService } from '@/services/api';
+import { authService, notificationService } from '@/services/api';
+import NotificationManager from './NotificationManager';
 
 interface User {
   employee_id: string;
@@ -162,6 +163,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     clearAllTimers();
     try {
+      const token = localStorage.getItem('fcm_token');
+      if (token) {
+        await notificationService.removeToken(token).catch(err => console.error("FCM token removal failed:", err));
+        localStorage.removeItem('fcm_token');
+      }
       await authService.logout();
     } catch (e) {
       console.error("Logout API failed, forcing local cleanup", e);
@@ -181,6 +187,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={{ user, activeRole, login, logout, switchRole, isLoading, setUser, resetInactivityTimer }}>
         {children}
+        <NotificationManager />
 
         {/* Inactivity Session Timeout Warning Modal */}
         {showTimeoutWarning && (

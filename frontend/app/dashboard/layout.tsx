@@ -88,6 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'AI Assistant', href: '/dashboard/assistant', icon: Bot, roles: ['Administrator', 'Maintenance Engineer', 'Operator', 'Supervisor'] },
     { name: 'PDF Reports', href: '/dashboard/reports', icon: FileText, roles: ['Administrator', 'Maintenance Engineer', 'Supervisor'] },
     { name: 'Alert Log', href: '/dashboard/alerts', icon: Bell, roles: ['Administrator', 'Maintenance Engineer', 'Operator', 'Supervisor'] },
+    { name: 'Settings', href: '/dashboard/settings', icon: Settings, roles: ['Administrator', 'Maintenance Engineer', 'Operator', 'Supervisor'] },
     { name: 'User Management', href: '/dashboard/users', icon: Users, roles: ['Administrator'] }
   ];
 

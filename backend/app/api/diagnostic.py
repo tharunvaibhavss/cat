@@ -314,6 +314,9 @@ def run_diagnostic(
                 is_resolved=False
             )
             db.add(new_alert)
+            db.flush()
+            from backend.app.services.notification_service import NotificationService
+            NotificationService.notify_alert_created(db, new_alert, "Critical")
             
             # Fetch all supervisor emails
             supervisors = db.query(User).filter(User.role == "Supervisor").all()

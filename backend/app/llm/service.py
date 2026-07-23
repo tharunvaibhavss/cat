@@ -1,54 +1,90 @@
 import os
 import json
 from openai import OpenAI
+import google.generativeai as genai
 from typing import Dict, Any
 
 class LLMService:
     @staticmethod
     def analyze_diagnostics(machine_info: Dict[str, Any], reference_config: Dict[str, Any], current_config: Dict[str, Any], diagnostic_result: Dict[str, Any]) -> Dict[str, str]:
         """
-        Submits configuration mismatches to OpenAI (GPT-4o/5.5) for structural root-cause analysis
-        and maintenance workflow compilation. If OPENAI_API_KEY is not set, it executes a local
+        Submits configuration mismatches to Google Gemini (or OpenAI fallback) for structural root-cause analysis
+        and maintenance workflow compilation. If no keys are set, it executes a local
         deterministic rule-based explainer as a fallback.
         """
-        api_key = os.getenv("OPENAI_API_KEY")
+        prompt = f"""
+        You are a senior industrial hardware systems engineer and diagnostic expert for Caterpillar (CAT) and Siemens machinery.
         
-        # If API key is available, attempt connection to OpenAI
+        Perform a root-cause analysis and generate maintenance recommendations based strictly on the following Real-Time Telemetry, Historical Audit, and Sensor parameters. Do NOT perform hardware blueprint audit comparisons.
+        
+        ### MACHINE INFO
+        Name: {machine_info.get('name')}
+        Model: {machine_info.get('model')}
+        Category: {machine_info.get('category')}
+        Manufacturer: {machine_info.get('manufacturer')}
+        
+        ### REAL-TIME TELEMETRY & HISTORICAL AUDIT RESULTS (JSON)
+        {json.dumps(diagnostic_result, indent=2)}
+        
+        ### FACTORY REFERENCE SPECIFICATIONS (REFERENCE ONLY)
+        {json.dumps(reference_config, indent=2)}
+        
+        Generate a response containing the following sections. Ensure the tone is highly professional, technical, and safety-oriented. Return the output STRICTLY as a JSON object with the following keys:
+        {{
+            "machine_health": "Short assessment of overall telemetry safety and status",
+            "root_cause_analysis": "Technical explanation of real-time sensor anomalies, operating trends, and historical deviations",
+            "severity_explanation": "Explain why this severity level (Info/Warning/Critical) was assigned to telemetry readings",
+            "maintenance_recommendation": "Step-by-step physical maintenance steps (e.g. check fluid levels, inspect cooling loop, test sensors)",
+            "safety_notes": "Essential safety protocols (LOTO - Lockout/Tagout, PPE) to follow during service",
+            "troubleshooting_steps": "Detailed sensor calibration steps, pressure checks, or diagnostic procedures to verify the fix",
+            "inspection_summary": "Summary of the telemetry inspection event for archival"
+        }}
+        """
+
+        # Try Google Gemini first
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            try:
+                genai.configure(api_key=gemini_key)
+                
+                try:
+                    # Attempt 1: gemini-1.5-flash with structured JSON response
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(
+                        prompt,
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+                    result_text = response.text
+                except Exception as e_flash:
+                    print(f"Gemini 1.5 Flash failed: {e_flash}. Falling back to gemini-pro...")
+                    # Attempt 2: gemini-pro (legacy universally supported endpoint)
+                    model = genai.GenerativeModel('gemini-pro')
+                    response = model.generate_content(prompt)
+                    result_text = response.text
+
+                # Cleanup potential markdown JSON tags from response text
+                cleaned_text = result_text.strip()
+                if cleaned_text.startswith("```json"):
+                    cleaned_text = cleaned_text[7:]
+                elif cleaned_text.startswith("```"):
+                    cleaned_text = cleaned_text[3:]
+                if cleaned_text.endswith("```"):
+                    cleaned_text = cleaned_text[:-3]
+                cleaned_text = cleaned_text.strip()
+                
+                return json.loads(cleaned_text)
+            except Exception as e:
+                print(f"Gemini Service Error, trying OpenAI fallback: {e}")
+                pass
+
+        # Fallback to OpenAI
+        api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
             try:
                 client = OpenAI(api_key=api_key)
                 
-                prompt = f"""
-                You are a senior industrial hardware systems engineer and diagnostic expert for Caterpillar (CAT) and Siemens machinery.
-                
-                Perform a root-cause analysis and generate maintenance recommendations based strictly on the following Real-Time Telemetry, Historical Audit, and Sensor parameters. Do NOT perform hardware blueprint audit comparisons.
-                
-                ### MACHINE INFO
-                Name: {machine_info.get('name')}
-                Model: {machine_info.get('model')}
-                Category: {machine_info.get('category')}
-                Manufacturer: {machine_info.get('manufacturer')}
-                
-                ### REAL-TIME TELEMETRY & HISTORICAL AUDIT RESULTS (JSON)
-                {json.dumps(diagnostic_result, indent=2)}
-                
-                ### FACTORY REFERENCE SPECIFICATIONS (REFERENCE ONLY)
-                {json.dumps(reference_config, indent=2)}
-                
-                Generate a response containing the following sections. Ensure the tone is highly professional, technical, and safety-oriented. Return the output STRICTLY as a JSON object with the following keys (no markdown formatting around it, just raw JSON):
-                {{
-                    "machine_health": "Short assessment of overall telemetry safety and status",
-                    "root_cause_analysis": "Technical explanation of real-time sensor anomalies, operating trends, and historical deviations",
-                    "severity_explanation": "Explain why this severity level (Info/Warning/Critical) was assigned to telemetry readings",
-                    "maintenance_recommendation": "Step-by-step physical maintenance steps (e.g. check fluid levels, inspect cooling loop, test sensors)",
-                    "safety_notes": "Essential safety protocols (LOTO - Lockout/Tagout, PPE) to follow during service",
-                    "troubleshooting_steps": "Detailed sensor calibration steps, pressure checks, or diagnostic procedures to verify the fix",
-                    "inspection_summary": "Summary of the telemetry inspection event for archival"
-                }}
-                """
-                
                 response = client.chat.completions.create(
-                    model="gpt-4o",  # or gpt-4o-mini, fallback to standard gpt-4o
+                    model="gpt-4o",
                     messages=[
                         {"role": "system", "content": "You are a professional industrial systems engineering analyzer. Return only structured JSON."},
                         {"role": "user", "content": prompt}
@@ -60,8 +96,7 @@ class LLMService:
                 result_text = response.choices[0].message.content
                 return json.loads(result_text)
             except Exception as e:
-                # Fallback to local template-based explainer on API failure
-                print(f"LLM Service Error, falling back to local model: {e}")
+                print(f"OpenAI Service Error, falling back to local model: {e}")
                 pass
 
         # Local fallback implementation
@@ -163,4 +198,81 @@ class LLMService:
             "safety_notes": safety,
             "troubleshooting_steps": troubleshooting,
             "inspection_summary": summary
+        }
+
+    @classmethod
+    def ask_assistant(cls, question: str, machine_context: str = "") -> dict:
+        """Query Gemini/OpenAI for the AI Maintenance Assistant Q&A."""
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        
+        prompt = f"""
+        You are a senior industrial hardware systems engineer and diagnostic expert for Caterpillar (CAT) and Siemens machinery.
+        
+        Answer the following technician question: "{question}"
+        {f"Context about the active machine under discussion: {machine_context}" if machine_context else ""}
+        
+        Provide professional, technical, safety-oriented guidance. Return the output STRICTLY as a JSON object with the following keys:
+        {{
+            "answer": "A detailed technical response answering the technician's question",
+            "probable_cause": "The most likely mechanical or electrical root cause of the issue",
+            "recommended_sequence": [
+                "1. Step one of recommendation...",
+                "2. Step two of recommendation..."
+            ],
+            "estimated_repair_time": "e.g. 2.5 Hours",
+            "required_spare_parts": [
+                "Part name 1",
+                "Part name 2"
+            ],
+            "safety_precautions": [
+                "Precaution 1",
+                "Precaution 2"
+            ]
+        }}
+        """
+
+        if gemini_key:
+            try:
+                genai.configure(api_key=gemini_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                return json.loads(response.text)
+            except Exception as e:
+                print(f"Gemini Assistant Error: {e}")
+                pass
+                
+        # Try OpenAI fallback
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            try:
+                client = OpenAI(api_key=api_key)
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are a professional industrial systems engineering analyzer. Return only structured JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.3
+                )
+                return json.loads(response.choices[0].message.content)
+            except Exception as e:
+                print(f"OpenAI Assistant Error: {e}")
+                pass
+                
+        # Local mock fallback
+        return {
+            "answer": f"Local Fallback: Received query '{question}' regarding {machine_context or 'machine'}.",
+            "probable_cause": "Operational drift, sensor noise, or system configuration misalignment.",
+            "recommended_sequence": [
+                "1. Connect diagnostic tool to the machine diagnostic port.",
+                "2. Read active trouble codes and clear sensor logs.",
+                "3. Perform manual hardware spec audit."
+            ],
+            "estimated_repair_time": "1.5 Hours",
+            "required_spare_parts": ["Diagnostic Cable adapter"],
+            "safety_precautions": ["Verify master disconnect power isolation before service."]
         }

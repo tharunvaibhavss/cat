@@ -15,6 +15,9 @@ class User(Base):
 
     reports = relationship("Report", back_populates="engineer")
     work_orders = relationship("WorkOrder", back_populates="assigned_technician")
+    fcm_tokens = relationship("UserFCMToken", back_populates="user", cascade="all, delete-orphan")
+    notification_settings = relationship("UserNotificationSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    notification_history = relationship("NotificationHistory", back_populates="user", cascade="all, delete-orphan")
 
 class Site(Base):
     __tablename__ = "sites"
@@ -191,3 +194,46 @@ class Alert(Base):
     resolved_at = Column(DateTime, nullable=True)
 
     machine = relationship("Machine")
+
+class UserFCMToken(Base):
+    __tablename__ = "user_fcm_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    fcm_token = Column(String, unique=True, index=True, nullable=False)
+    browser_name = Column(String, nullable=True)
+    device_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="fcm_tokens")
+
+class UserNotificationSettings(Base):
+    __tablename__ = "user_notification_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    critical_enabled = Column(Boolean, default=True, nullable=False)
+    warning_enabled = Column(Boolean, default=True, nullable=False)
+    maintenance_enabled = Column(Boolean, default=True, nullable=False)
+    inspection_enabled = Column(Boolean, default=True, nullable=False)
+    info_enabled = Column(Boolean, default=True, nullable=False)
+    quiet_hours_start = Column(String, nullable=True)  # e.g., "22:00"
+    quiet_hours_end = Column(String, nullable=True)    # e.g., "06:00"
+
+    user = relationship("User", back_populates="notification_settings")
+
+class NotificationHistory(Base):
+    __tablename__ = "notification_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(String, nullable=False)
+    category = Column(String, nullable=False)  # Critical, Warning, Maintenance, Inspection, Information
+    machine_id = Column(String, nullable=True)
+    alert_id = Column(Integer, nullable=True)
+    sent_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+
+    user = relationship("User", back_populates="notification_history")

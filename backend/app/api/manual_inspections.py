@@ -171,6 +171,9 @@ def create_manual_inspection(
             is_resolved=False
         )
         db.add(new_alert)
+        db.flush()
+        from backend.app.services.notification_service import NotificationService
+        NotificationService.notify_alert_created(db, new_alert, "Inspection")
 
     log = ActivityLog(
         employee_id=current_user.employee_id,
