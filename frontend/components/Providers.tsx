@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { authService, notificationService } from '@/services/api';
+import { authService, notificationService, handoverService } from '@/services/api';
 import NotificationManager from './NotificationManager';
 
 interface User {
@@ -21,6 +21,10 @@ interface AuthContextType {
   isLoading: boolean;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
   resetInactivityTimer: () => void;
+  deviceId: string | null;
+  sessionId: string | null;
+  currentDashboardState: any;
+  updateDashboardState: (updates: any) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,11 +44,49 @@ const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
 const WARNING_BUFFER_MS = 60 * 1000;
 const WARNING_INITIAL_SECONDS = 60;
 
+// Helper to detect OS/Browser
+const getDeviceMeta = () => {
+  if (typeof window === 'undefined') return { os: 'Unknown', browser: 'Unknown', name: 'Unknown Device' };
+  const userAgent = navigator.userAgent;
+  let browser = 'Unknown Browser';
+  if (userAgent.includes('Firefox')) browser = 'Firefox';
+  else if (userAgent.includes('Edg')) browser = 'Edge';
+  else if (userAgent.includes('Chrome')) browser = 'Chrome';
+  else if (userAgent.includes('Safari')) browser = 'Safari';
+
+  let os = 'Unknown OS';
+  if (userAgent.includes('Windows')) os = 'Windows';
+  else if (userAgent.includes('Mac')) os = 'macOS';
+  else if (userAgent.includes('Linux')) os = 'Linux';
+  else if (userAgent.includes('Android')) os = 'Android';
+  else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+
+  let type = 'Desktop';
+  if (/Mobi|Android|iPhone/i.test(userAgent)) type = 'Mobile';
+
+  return {
+    os,
+    browser,
+    name: `${browser} on ${os} (${type})`
+  };
+};
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
+  // Handover state
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentDashboardState, setCurrentDashboardState] = useState<any>({
+    current_page: '/dashboard',
+    selected_machine: '',
+    selected_site: '',
+    filters: {},
+    dashboard_state: {}
+  });
+
   // Timeout Modal & Countdown state
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(WARNING_INITIAL_SECONDS);
@@ -53,6 +95,25 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
   const logoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize or fetch stable device_id and session_id
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      let storedDeviceId = localStorage.getItem('handover_device_id');
+      if (!storedDeviceId) {
+        storedDeviceId = 'device-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now();
+        localStorage.setItem('handover_device_id', storedDeviceId);
+      }
+      setDeviceId(storedDeviceId);
+
+      let currentSessionId = sessionStorage.getItem('handover_session_id');
+      if (!currentSessionId) {
+        currentSessionId = 'session-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now();
+        sessionStorage.setItem('handover_session_id', currentSessionId);
+      }
+      setSessionId(currentSessionId);
+    }
+  }, []);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -64,6 +125,66 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(false);
   }, []);
+
+  // Handover: Heartbeat and Session Save timers
+  useEffect(() => {
+    if (!user || !deviceId || !sessionId) return;
+
+    // A. Register device immediately
+    const register = async () => {
+      try {
+        const meta = getDeviceMeta();
+        const fcmToken = localStorage.getItem('fcm_token') || `token-${user.employee_id}-${meta.browser.toLowerCase()}-${meta.os.toLowerCase()}-stable`;
+        await handoverService.registerDevice(deviceId, meta.name, meta.browser, meta.os, fcmToken);
+      } catch (err) {
+        console.error('Failed to register device for handover', err);
+      }
+    };
+    register();
+
+    // B. Send Heartbeat every 20 seconds
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await handoverService.sendHeartbeat(deviceId, sessionId);
+      } catch (err) {
+        console.error('Failed sending heartbeat', err);
+      }
+    }, 20000);
+
+    // C. Periodically save session state every 30 seconds
+    const saveStateInterval = setInterval(async () => {
+      try {
+        await handoverService.saveSession({
+          session_id: sessionId,
+          device_id: deviceId,
+          ...currentDashboardState
+        });
+      } catch (err) {
+        console.error('Failed auto-saving session state', err);
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      clearInterval(saveStateInterval);
+    };
+  }, [user, deviceId, sessionId, currentDashboardState]);
+
+  // Manual dashboard state updater that triggers instant save
+  const updateDashboardState = (updates: any) => {
+    setCurrentDashboardState((prev: any) => {
+      const nextState = { ...prev, ...updates };
+      // Save state immediately on navigation, selection or filters update
+      if (user && deviceId && sessionId) {
+        handoverService.saveSession({
+          session_id: sessionId,
+          device_id: deviceId,
+          ...nextState
+        }).catch(err => console.error('Failed immediate session save', err));
+      }
+      return nextState;
+    });
+  };
 
   // Inactivity Listeners
   useEffect(() => {
@@ -185,7 +306,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={{ user, activeRole, login, logout, switchRole, isLoading, setUser, resetInactivityTimer }}>
+      <AuthContext.Provider value={{ 
+        user, 
+        activeRole, 
+        login, 
+        logout, 
+        switchRole, 
+        isLoading, 
+        setUser, 
+        resetInactivityTimer,
+        deviceId,
+        sessionId,
+        currentDashboardState,
+        updateDashboardState
+      }}>
         {children}
         <NotificationManager />
 

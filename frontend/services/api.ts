@@ -360,3 +360,57 @@ export const dashboardService = {
     return response.data;
   }
 };
+
+// Handover endpoints
+export const handoverService = {
+  registerDevice: async (deviceId: string, deviceName?: string, browserName?: string, operatingSystem?: string, fcmToken?: string) => {
+    const response = await api.post('/devices/register', {
+      device_id: deviceId,
+      device_name: deviceName,
+      browser_name: browserName,
+      operating_system: operatingSystem,
+      fcm_token: fcmToken
+    });
+    return response.data;
+  },
+  sendHeartbeat: async (deviceId: string, sessionId: string) => {
+    const response = await api.post('/heartbeat', {
+      device_id: deviceId,
+      session_id: sessionId,
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  },
+  saveSession: async (payload: {
+    session_id: string;
+    device_id: string;
+    current_page?: string;
+    selected_machine?: string;
+    selected_site?: string;
+    filters?: any;
+    dashboard_state?: any;
+  }) => {
+    const response = await api.post('/session/save', payload);
+    return response.data;
+  },
+  getSession: async (sessionId: string) => {
+    const response = await api.get(`/session/${sessionId}`);
+    return response.data;
+  },
+  resumeSession: async (sessionId: string, deviceId: string) => {
+    const response = await api.post('/session/resume', {
+      session_id: sessionId,
+      device_id: deviceId
+    });
+    return response.data;
+  },
+  listDevices: async () => {
+    const response = await api.get('/devices');
+    return response.data;
+  },
+  removeDevice: async (deviceId: string) => {
+    const response = await api.delete(`/devices/${deviceId}`);
+    return response.data;
+  }
+};
+

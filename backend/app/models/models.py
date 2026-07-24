@@ -237,3 +237,37 @@ class NotificationHistory(Base):
     is_read = Column(Boolean, default=False, nullable=False)
 
     user = relationship("User", back_populates="notification_history")
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    id = Column(String, primary_key=True, index=True) # UUID device_id
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    device_name = Column(String, nullable=True)
+    browser = Column(String, nullable=True)
+    operating_system = Column(String, nullable=True)
+    fcm_token = Column(String, nullable=True)
+    status = Column(String, default="ONLINE") # ONLINE, OFFLINE
+    last_seen = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="devices")
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    session_id = Column(String, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    active_device = Column(String, nullable=True) # current device_id
+    current_page = Column(String, nullable=True)
+    selected_machine = Column(String, nullable=True)
+    selected_site = Column(String, nullable=True)
+    filters = Column(JSON, nullable=True)
+    dashboard_state = Column(JSON, nullable=True)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="sessions")
+
+
+User.devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
+User.sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+

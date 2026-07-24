@@ -2,7 +2,8 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.database.connection import engine, Base
 from backend.app.api import (
     auth, users, machines, diagnostic, llm, reports, dashboard, alerts,
-    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications
+    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications, handover
 )
 from backend.app.sample_data.seed import seed_database
 from backend.app.database.connection import SessionLocal
@@ -35,6 +36,9 @@ app.add_middleware(
 os.makedirs("backend/static/reports", exist_ok=True)
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
 
+import asyncio
+from backend.app.services.heartbeat_monitor import monitor_heartbeats
+
 # Startup database initialization and seeding
 @app.on_event("startup")
 def startup_event():
@@ -55,6 +59,11 @@ def startup_event():
     finally:
         db.close()
 
+    # Start Heartbeat / Offline Monitor Background Task
+    loop = asyncio.get_event_loop()
+    loop.create_task(monitor_heartbeats())
+
+
 # Include routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
@@ -65,6 +74,7 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
+app.include_router(handover.router, prefix="/api")
 
 # Core Feature & Telemetry Ingestion Routers
 app.include_router(manual_inspections.router, prefix="/api")
