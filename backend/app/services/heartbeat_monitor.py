@@ -3,8 +3,8 @@ import datetime
 import logging
 from sqlalchemy.orm import Session
 from backend.app.database.connection import SessionLocal
-from backend.app.models.models import Device, UserSession
-from backend.app.services.notification_service import NotificationService
+from backend.app.models.models import Device, UserSession, User, SessionAuditLog
+from backend.app.api.recovery_ws import manager
 
 logger = logging.getLogger("cat_heartbeat_monitor")
 logger.setLevel(logging.INFO)
@@ -14,73 +14,111 @@ if not logger.handlers:
     logger.addHandler(ch)
 
 async def monitor_heartbeats():
-    """Background task running every 30 seconds to check for offline devices and notify other active devices."""
+    """Background task running every 10 seconds to check for offline devices/sessions."""
     while True:
         try:
-            await asyncio.sleep(30)
+            await asyncio.sleep(10)
             db = SessionLocal()
             try:
                 now = datetime.datetime.utcnow()
-                # Check devices that have not sent a heartbeat in the last 60 seconds
-                cutoff = now - datetime.timedelta(seconds=60)
-                offline_devices = db.query(Device).filter(
-                    Device.status == "ONLINE",
-                    Device.last_seen < cutoff
+                
+                # A. Identify and process interrupted user sessions
+                # Check sessions that are ACTIVE and have not sent a heartbeat in the last 30 seconds
+                cutoff_30s = now - datetime.timedelta(seconds=30)
+                interrupted_sessions = db.query(UserSession).filter(
+                    UserSession.status == "ACTIVE",
+                    UserSession.last_activity_time < cutoff_30s
                 ).all()
 
-                for device in offline_devices:
-                    logger.info(f"Device {device.id} ({device.device_name or 'Unknown'}) is detected as OFFLINE")
-                    device.status = "OFFLINE"
+                for session in interrupted_sessions:
+                    owner = db.query(User).filter(User.id == session.user_id).first()
+                    owner_name = owner.username if owner else "Unknown"
+                    
+                    logger.info(f"Session {session.session_id} belonging to {owner_name} is detected as INTERRUPTED (No heartbeat for 30s)")
+                    session.status = "INTERRUPTED"
+                    
+                    # Log audit events
+                    audit1 = SessionAuditLog(
+                        session_id=session.session_id,
+                        user_id=session.user_id,
+                        username=owner_name,
+                        department=session.department,
+                        device=session.device_id or "Unknown",
+                        timestamp=datetime.datetime.utcnow(),
+                        action="Heartbeat Lost",
+                        status="Failed"
+                    )
+                    audit2 = SessionAuditLog(
+                        session_id=session.session_id,
+                        user_id=session.user_id,
+                        username=owner_name,
+                        department=session.department,
+                        device=session.device_id or "Unknown",
+                        timestamp=datetime.datetime.utcnow(),
+                        action="Session Interrupted",
+                        status="Waiting for Recovery"
+                    )
+                    db.add(audit1)
+                    db.add(audit2)
                     db.commit()
 
-                    # Find user session to see if there is an active session
-                    # Retrieve the last active session for this user that was active on the offline device
-                    active_session = db.query(UserSession).filter(
-                        UserSession.user_id == device.user_id,
-                        UserSession.active_device == device.id
-                    ).order_by(UserSession.last_updated.desc()).first()
+                    # Notify department via WebSockets
+                    ws_message = {
+                        "type": "SESSION_INTERRUPTED",
+                        "session_id": session.session_id,
+                        "employee": owner_name,
+                        "department": session.department or "Vendor Management",
+                        "task": session.current_task or "Vendor Approval",
+                        "module": session.current_module or "Vendor Approval",
+                        "device": session.device_id or "Laptop A",
+                        "step_progress": session.step_progress or "5 of 8",
+                        "unsaved_changes": session.unsaved_changes_count or 0,
+                        "interrupted_at": now.strftime("%I:%M %p"),
+                        "time_since_failure": "30 Seconds"
+                    }
+                    
+                    # Log that admin and backup users are notified
+                    log_session_audit_silent(db, session.session_id, session.user_id, owner_name, session.department, session.device_id, "Department Admin Notified", "Sent")
+                    log_session_audit_silent(db, session.session_id, session.user_id, owner_name, session.department, session.device_id, "Employee B Notified", "Sent")
+                    
+                    await manager.broadcast_to_department(
+                        department=session.department,
+                        message=ws_message,
+                        exclude_user_id=session_record.user_id
+                    )
 
-                    if not active_session:
-                        # Fallback: check any session associated with this user
-                        active_session = db.query(UserSession).filter(
-                            UserSession.user_id == device.user_id
-                        ).order_by(UserSession.last_updated.desc()).first()
+                # B. Handle recovery timeout after 5 minutes (300 seconds)
+                cutoff_5m = now - datetime.timedelta(seconds=300)
+                timeout_sessions = db.query(UserSession).filter(
+                    UserSession.status == "INTERRUPTED",
+                    UserSession.last_activity_time < cutoff_5m,
+                    (UserSession.timeout_alert_sent == False) | (UserSession.timeout_alert_sent == None)
+                ).all()
 
-                    if active_session:
-                        # Find other ONLINE devices for the same user
-                        other_online_devices = db.query(Device).filter(
-                            Device.user_id == device.user_id,
-                            Device.id != device.id,
-                            Device.status == "ONLINE"
-                        ).all()
+                for session in timeout_sessions:
+                    owner = db.query(User).filter(User.id == session.user_id).first()
+                    owner_name = owner.username if owner else "Unknown"
+                    logger.info(f"Session {session.session_id} has exceeded the 5-minute recovery timeout threshold")
+                    session.timeout_alert_sent = True
+                    db.commit()
 
-                        if other_online_devices:
-                            logger.info(f"Notifying user {device.user_id} other online devices about session {active_session.session_id}")
-                            
-                            title = "Session Interrupted"
-                            device_name = device.device_name or f"{device.browser or 'Browser'} on {device.operating_system or 'OS'}"
-                            body = f"{device_name} is offline. Resume monitoring on this device?"
-                            
-                            # Custom FCM payload data containing the session and resume url
-                            # In browser, notifications require payload properties as string values
-                            payload_data = {
-                                "session_id": str(active_session.session_id),
-                                "device_id": str(device.id),
-                                "resume_url": f"/dashboard/resume?session={active_session.session_id}",
-                                "category": "Warning",
-                                "severity": "Warning"
-                            }
+                    ws_message = {
+                        "type": "RECOVERY_TIMEOUT",
+                        "session_id": session.session_id,
+                        "employee": owner_name,
+                        "department": session.department or "Vendor Management",
+                        "message": "Session has not been recovered. Would you like to Assign Another Employee or Close Session?"
+                    }
+                    
+                    # Log warning
+                    log_session_audit_silent(db, session.session_id, session.user_id, owner_name, session.department, session.device_id, "Recovery Timeout Warning", "Sent")
 
-                            for target_device in other_online_devices:
-                                # We can dispatch to this target device using the stored fcm_token or mock dispatch
-                                NotificationService.send_push_notification(
-                                    db=db,
-                                    user_id=device.user_id,
-                                    title=title,
-                                    body=body,
-                                    category="Warning",
-                                    data=payload_data
-                                )
+                    await manager.broadcast_to_department(
+                        department=session.department,
+                        message=ws_message,
+                        exclude_user_id=session_record.user_id
+                    )
+
             except Exception as e:
                 logger.error(f"Error in heartbeat monitor database operation: {e}")
                 db.rollback()
@@ -91,3 +129,20 @@ async def monitor_heartbeats():
             break
         except Exception as e:
             logger.error(f"Unexpected error in heartbeat monitor: {e}")
+
+def log_session_audit_silent(db: Session, session_id: str, user_id: int, username: str, department: str, device: str, action: str, status: str):
+    try:
+        audit = SessionAuditLog(
+            session_id=session_id,
+            user_id=user_id,
+            username=username,
+            department=department,
+            device=device or "Unknown",
+            timestamp=datetime.datetime.utcnow(),
+            action=action,
+            status=status
+        )
+        db.add(audit)
+        db.commit()
+    except Exception:
+        pass

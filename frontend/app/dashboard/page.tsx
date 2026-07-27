@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { dashboardService } from '@/services/api';
+import { dashboardService, sessionRecoveryService } from '@/services/api';
 import { useAuth } from '@/components/Providers';
 import { 
   Cpu, 
@@ -16,7 +16,8 @@ import {
   Users, 
   RefreshCw,
   Clock,
-  Wrench
+  Wrench,
+  Laptop
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,6 +48,17 @@ export default function DashboardPage() {
     queryKey: ['dashboardData'],
     queryFn: dashboardService.getData,
     refetchInterval: 10000, // Auto refresh every 10s for real-time look
+  });
+
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    setCurrentSessionId(sessionStorage.getItem('handover_session_id'));
+  }, []);
+
+  const { data: myDevices } = useQuery({
+    queryKey: ['myActiveDevices'],
+    queryFn: sessionRecoveryService.getMyActiveDevices,
+    refetchInterval: 10000,
   });
 
   if (isLoading || !mounted) {
@@ -378,6 +390,47 @@ export default function DashboardPage() {
           </div>
         </div>
 
+      </div>
+
+      {/* ----------------- LINKED DEVICES & HANDOVER ----------------- */}
+      <div className="card-industrial p-5 bg-white">
+        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-4 flex items-center">
+          <Laptop className="w-4 h-4 mr-2 text-primary-dark" />
+          My Linked Devices (Backup Sessions)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {myDevices && myDevices.filter((d: any) => d.session_id !== currentSessionId).length > 0 ? (
+            myDevices.filter((d: any) => d.session_id !== currentSessionId).map((device: any) => (
+              <div key={device.session_id} className="border border-emerald-200 bg-emerald-50 rounded p-4 flex flex-col justify-between shadow-sm">
+                <div>
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase bg-emerald-100 px-2 py-1 rounded">Active Backup</span>
+                    <span className="text-[10px] text-gray-500 font-mono">{device.device_id.substring(0,8)}</span>
+                  </div>
+                  <div className="text-sm font-bold text-gray-900 mb-1">{device.current_module || 'Dashboard'}</div>
+                  <div className="text-xs text-gray-600">Task: {device.current_task || 'Idle'}</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (currentSessionId) {
+                      await sessionRecoveryService.handoverToDevice(device.session_id, currentSessionId);
+                      alert('Handover request sent to ' + device.device_id);
+                    } else {
+                      alert('No active session ID found to handover.');
+                    }
+                  }}
+                  className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold uppercase py-2 rounded shadow-sm hover:shadow-md transition-all"
+                >
+                  Handover to this Device
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full text-center text-gray-400 py-6 text-xs font-medium">
+              No other active devices found for your account. Log in on another device to see it here.
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

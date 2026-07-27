@@ -414,3 +414,69 @@ export const handoverService = {
   }
 };
 
+export const sessionRecoveryService = {
+  getMyActiveDevices: async () => {
+    const response = await api.get('/session-recovery/user/active-devices');
+    return response.data;
+  },
+  handoverToDevice: async (targetSessionId: string, currentSessionId: string) => {
+    const response = await api.post(`/session-recovery/${targetSessionId}/handover`, { current_session_id: currentSessionId });
+    return response.data;
+  },
+  sendHeartbeat: async (payload: {
+    session_id: string;
+    device_id: string;
+    current_page?: string;
+    current_module?: string;
+    current_task?: string;
+    current_form_state?: any;
+    unsaved_changes_count?: number;
+    step_progress?: string;
+  }) => {
+    const response = await api.post('/session-recovery/heartbeat', payload);
+    return response.data;
+  },
+  saveState: async (payload: {
+    session_id: string;
+    device_id: string;
+    current_page?: string;
+    current_module?: string;
+    current_task?: string;
+    current_form_state?: any;
+    unsaved_changes_count?: number;
+    step_progress?: string;
+    selected_machine?: string;
+    selected_site?: string;
+    filters?: any;
+    dashboard_state?: any;
+  }) => {
+    const response = await api.post('/session-recovery/save-state', payload);
+    return response.data;
+  },
+  getRecoverySession: async (sessionId: string) => {
+    const response = await api.get(`/session-recovery/${sessionId}`);
+    return response.data;
+  },
+  resumeSession: async (sessionId: string) => {
+    const response = await api.post(`/session-recovery/${sessionId}/resume`);
+    return response.data;
+  },
+  getReadOnlySession: async (sessionId: string) => {
+    const response = await api.get(`/session-recovery/${sessionId}/read-only`);
+    return response.data;
+  },
+  assignSessionEmployee: async (sessionId: string, employeeId: string) => {
+    const response = await api.post(`/session-recovery/${sessionId}/assign`, { employee_id: employeeId });
+    return response.data;
+  },
+  getDepartmentEmployees: async () => {
+    const response = await api.get('/session-recovery/department-employees');
+    return response.data;
+  },
+  getSessionAuditLogs: async (sessionId: string) => {
+    const response = await api.get(`/session-recovery/${sessionId}/audit-logs`);
+    return response.data;
+  }
+};
+
+

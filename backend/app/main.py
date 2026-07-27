@@ -8,13 +8,13 @@ load_dotenv(dotenv_path=dotenv_path)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from backend.app.database.connection import engine, Base
+from backend.app.database.connection import engine, Base, SessionLocal
 from backend.app.api import (
     auth, users, machines, diagnostic, llm, reports, dashboard, alerts,
-    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications, handover
+    manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications, handover,
+    recovery_ws, recovery_router
 )
 from backend.app.sample_data.seed import seed_database
-from backend.app.database.connection import SessionLocal
 from backend.app.models.models import User
 
 app = FastAPI(
@@ -75,6 +75,8 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(handover.router, prefix="/api")
+app.include_router(recovery_ws.router, prefix="/api")
+app.include_router(recovery_router.router, prefix="/api")
 
 # Core Feature & Telemetry Ingestion Routers
 app.include_router(manual_inspections.router, prefix="/api")

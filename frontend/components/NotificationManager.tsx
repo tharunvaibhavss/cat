@@ -166,6 +166,27 @@ export default function NotificationManager() {
     return () => clearInterval(interval);
   }, [user, queryClient]);
 
+    // 3. Handle recovered=true query parameter to show a toast
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('recovered') === 'true') {
+        const toastId = Date.now() + Math.random();
+        setToasts((prev) => [...prev, {
+          id: toastId,
+          title: 'Session Restored',
+          body: 'Your device is now connected and has taken over the active session.',
+          category: 'Maintenance',
+          machine_id: undefined,
+          alert_id: undefined
+        }]);
+        // Remove the query parameter without reloading
+        url.searchParams.delete('recovered');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  }, []);
+
   const removeToast = (id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
@@ -260,3 +281,4 @@ export default function NotificationManager() {
     </div>
   );
 }
+

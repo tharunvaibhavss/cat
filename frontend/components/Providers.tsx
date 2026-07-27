@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { authService, notificationService, handoverService } from '@/services/api';
+import { authService, notificationService, handoverService, sessionRecoveryService } from '@/services/api';
 import NotificationManager from './NotificationManager';
 
 interface User {
@@ -90,6 +90,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // Timeout Modal & Countdown state
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(WARNING_INITIAL_SECONDS);
+  const [recoveryPrompt, setRecoveryPrompt] = useState<any>(null);
 
   const lastActivityRef = useRef<number>(Date.now());
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -142,22 +143,48 @@ export function Providers({ children }: { children: React.ReactNode }) {
     };
     register();
 
-    // B. Send Heartbeat every 20 seconds
+    // B. Send Heartbeat to Session Recovery every 10 seconds
     const heartbeatInterval = setInterval(async () => {
       try {
-        await handoverService.sendHeartbeat(deviceId, sessionId);
+        await sessionRecoveryService.sendHeartbeat({
+          session_id: sessionId,
+          device_id: deviceId,
+          current_page: typeof window !== 'undefined' ? window.location.pathname : '/dashboard',
+          current_module: currentDashboardState.current_module || "Vendor Approval",
+          current_task: currentDashboardState.current_task || "Vendor Approval",
+          current_form_state: currentDashboardState.current_form_state || {
+            vendor_name: "Caterpillar Parts Corp",
+            approval_status: "Pending Review",
+            priority_level: "High"
+          },
+          unsaved_changes_count: currentDashboardState.unsaved_changes_count !== undefined ? currentDashboardState.unsaved_changes_count : 3,
+          step_progress: currentDashboardState.step_progress || "5 of 8"
+        });
       } catch (err) {
-        console.error('Failed sending heartbeat', err);
+        console.error('Failed sending session recovery heartbeat', err);
       }
-    }, 20000);
+    }, 10000);
 
     // C. Periodically save session state every 30 seconds
     const saveStateInterval = setInterval(async () => {
       try {
-        await handoverService.saveSession({
+        await sessionRecoveryService.saveState({
           session_id: sessionId,
           device_id: deviceId,
-          ...currentDashboardState
+          current_page: typeof window !== 'undefined' ? window.location.pathname : '/dashboard',
+          current_module: currentDashboardState.current_module || "Vendor Approval",
+          current_task: currentDashboardState.current_task || "Vendor Approval",
+          current_form_state: currentDashboardState.current_form_state || {
+            vendor_name: "Caterpillar Parts Corp",
+            approval_status: "Pending Review",
+            priority_level: "High"
+          },
+          unsaved_changes_count: currentDashboardState.unsaved_changes_count !== undefined ? currentDashboardState.unsaved_changes_count : 3,
+          step_progress: currentDashboardState.step_progress || "5 of 8",
+          selected_machine: currentDashboardState.selected_machine,
+          selected_site: currentDashboardState.selected_site,
+          filters: currentDashboardState.filters,
+          dashboard_state: currentDashboardState.dashboard_state
         });
       } catch (err) {
         console.error('Failed auto-saving session state', err);
@@ -170,16 +197,93 @@ export function Providers({ children }: { children: React.ReactNode }) {
     };
   }, [user, deviceId, sessionId, currentDashboardState]);
 
+  // WebSocket client connection for real-time recovery alerts
+  useEffect(() => {
+    if (!user) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+    // Ensure we run on backend port 8000
+    const wsUrl = `ws://${host}:8000/api/ws/notifications?token=${token}`;
+    
+    let socket: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
+
+    const connectWebSocket = () => {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        console.log('[WebSocket] Session Recovery channel established');
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[WebSocket] Event received:', data);
+
+          if (data.type === 'SESSION_INTERRUPTED') {
+            // Show a prompt to same-department authorized users instead of instant redirect
+            if (data.session_id !== sessionId) {
+               setRecoveryPrompt(data);
+            }
+          } else if (data.type === 'SESSION_ASSIGNED') {
+            if (data.assigned_to === user.employee_id && data.session_id !== sessionId) {
+              window.location.href = `/dashboard/resume?session=${data.session_id}`;
+            }
+          } else if (data.type === 'SESSION_HANDOVER_REQUESTED') {
+            if (data.target_session_id === sessionId) {
+              window.location.href = `/dashboard/resume?session=${data.session_id}`;
+            }
+          }
+        } catch (err) {
+          console.error('[WebSocket] Parsing error:', err);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.error('[WebSocket] Connection error:', err);
+      };
+
+      socket.onclose = (event) => {
+        console.log('[WebSocket] Connection closed. Code:', event.code);
+        reconnectTimeout = setTimeout(() => {
+          if (user) connectWebSocket();
+        }, 3000);
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) socket.close();
+      clearTimeout(reconnectTimeout);
+    };
+  }, [user]);
+
   // Manual dashboard state updater that triggers instant save
   const updateDashboardState = (updates: any) => {
     setCurrentDashboardState((prev: any) => {
       const nextState = { ...prev, ...updates };
-      // Save state immediately on navigation, selection or filters update
       if (user && deviceId && sessionId) {
-        handoverService.saveSession({
+        sessionRecoveryService.saveState({
           session_id: sessionId,
           device_id: deviceId,
-          ...nextState
+          current_page: typeof window !== 'undefined' ? window.location.pathname : '/dashboard',
+          current_module: nextState.current_module || "Vendor Approval",
+          current_task: nextState.current_task || "Vendor Approval",
+          current_form_state: nextState.current_form_state || {
+            vendor_name: "Caterpillar Parts Corp",
+            approval_status: "Pending Review",
+            priority_level: "High"
+          },
+          unsaved_changes_count: nextState.unsaved_changes_count !== undefined ? nextState.unsaved_changes_count : 3,
+          step_progress: nextState.step_progress || "5 of 8",
+          selected_machine: nextState.selected_machine,
+          selected_site: nextState.selected_site,
+          filters: nextState.filters,
+          dashboard_state: nextState.dashboard_state
         }).catch(err => console.error('Failed immediate session save', err));
       }
       return nextState;
@@ -189,7 +293,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // Inactivity Listeners
   useEffect(() => {
     if (!user) {
-      clearAllTimers();
       setShowTimeoutWarning(false);
       return;
     }
@@ -198,59 +301,40 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     const handleUserActivity = () => {
       lastActivityRef.current = Date.now();
-      if (showTimeoutWarning) {
-        // If warning modal is open, user activity resets warning
-        resetInactivityTimer();
-      }
     };
 
     activityEvents.forEach((evt) => window.addEventListener(evt, handleUserActivity));
-    resetInactivityTimer();
+    lastActivityRef.current = Date.now();
+
+    const interval = setInterval(() => {
+      const inactiveTime = Date.now() - lastActivityRef.current;
+      
+      if (inactiveTime >= INACTIVITY_LIMIT_MS) {
+        handleAutomaticLogout();
+      } else if (inactiveTime >= (INACTIVITY_LIMIT_MS - WARNING_BUFFER_MS)) {
+        setShowTimeoutWarning(true);
+        setSecondsRemaining(Math.ceil((INACTIVITY_LIMIT_MS - inactiveTime) / 1000));
+      } else {
+        setShowTimeoutWarning(false);
+      }
+    }, 1000);
 
     return () => {
       activityEvents.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
-      clearAllTimers();
+      clearInterval(interval);
     };
   }, [user]);
 
   const clearAllTimers = () => {
-    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
-    if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    // Left for compatibility, not strictly needed for inactivity anymore
   };
 
   const resetInactivityTimer = () => {
-    clearAllTimers();
+    lastActivityRef.current = Date.now();
     setShowTimeoutWarning(false);
-    setSecondsRemaining(WARNING_INITIAL_SECONDS);
-
-    if (!user) return;
-
-    // Set timer for warning display (45 seconds)
-    warningTimerRef.current = setTimeout(() => {
-      setShowTimeoutWarning(true);
-      setSecondsRemaining(WARNING_INITIAL_SECONDS);
-
-      // Start countdown ticker
-      countdownIntervalRef.current = setInterval(() => {
-        setSecondsRemaining((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownIntervalRef.current!);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }, INACTIVITY_LIMIT_MS - WARNING_BUFFER_MS);
-
-    // Set hard logout timer (60 seconds)
-    logoutTimerRef.current = setTimeout(() => {
-      handleAutomaticLogout();
-    }, INACTIVITY_LIMIT_MS);
   };
 
   const handleAutomaticLogout = async () => {
-    clearAllTimers();
     setShowTimeoutWarning(false);
     setUser(null);
     setActiveRole(null);
@@ -349,6 +433,44 @@ export function Providers({ children }: { children: React.ReactNode }) {
                   className="flex-1 px-3 py-2 bg-primary hover:bg-yellow-500 text-black text-xs font-extrabold rounded uppercase"
                 >
                   Stay Logged In
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recovery Handover Prompt Modal -> Top Right Push Notification style */}
+        {recoveryPrompt && (
+          <div className="fixed top-5 right-5 z-50 flex items-start justify-end p-4 animate-fade-in pointer-events-none">
+            <div className="bg-white rounded-lg shadow-2xl max-w-sm w-full p-5 space-y-3 border-l-4 border-emerald-500 pointer-events-auto">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0">
+                  🔄
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-gray-900">Session Handover</h3>
+                  <p className="text-xs text-gray-500 font-medium">Session disconnected for <strong className="text-emerald-700">{recoveryPrompt.employee}</strong></p>
+                </div>
+              </div>
+              
+              <div className="text-left text-[11px] bg-gray-50 border border-gray-100 p-2.5 rounded space-y-1">
+                <div><span className="font-semibold text-gray-700">Module:</span> <span className="text-gray-600">{recoveryPrompt.module}</span></div>
+                <div><span className="font-semibold text-gray-700">Task:</span> <span className="text-gray-600">{recoveryPrompt.task}</span></div>
+                <div><span className="font-semibold text-gray-700">Device:</span> <span className="text-gray-600">{recoveryPrompt.device}</span></div>
+              </div>
+              
+              <div className="pt-1 flex space-x-2">
+                <button
+                  onClick={() => setRecoveryPrompt(null)}
+                  className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-bold rounded uppercase transition-colors"
+                >
+                  Ignore
+                </button>
+                <button
+                  onClick={() => window.location.href = `/dashboard/resume?session=${recoveryPrompt.session_id}`}
+                  className="flex-[2] px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold rounded uppercase shadow-sm transition-colors"
+                >
+                  Take Over Session
                 </button>
               </div>
             </div>

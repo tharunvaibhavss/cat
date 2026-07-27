@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from backend.app.database.connection import SessionLocal, Base, engine
-from backend.app.models.models import User, Site, Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, Report, ActivityLog, ManualInspection, WorkOrder, VisionInspection, Alert
+from backend.app.models.models import User, Site, Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, Report, ActivityLog, ManualInspection, WorkOrder, VisionInspection, Alert, SessionAuditLog
 from backend.app.utils.security import get_password_hash
 from backend.app.diagnostic_engine.engine import DiagnosticEngine
 from backend.app.llm.service import LLMService
@@ -8,7 +8,8 @@ import datetime
 import os
 
 def seed_database():
-    # Make sure tables exist
+    # Make sure tables are recreated with new schema
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     
     db: Session = SessionLocal()
@@ -25,6 +26,7 @@ def seed_database():
         db.query(ReferenceConfiguration).delete()
         db.query(Machine).delete()
         db.query(Site).delete()
+        db.query(SessionAuditLog).delete()
         db.query(User).delete()
         db.commit()
 
@@ -32,10 +34,24 @@ def seed_database():
 
         # 1. Seed Users
         users = [
-            User(employee_id="EMP-ADMIN01", username="John Administrator", role="Administrator", password_hash=get_password_hash("admin123"), email="admin@cat-diagnostics.com"),
-            User(employee_id="EMP-ENG01", username="Sarah Engineer", role="Maintenance Engineer", password_hash=get_password_hash("eng123"), email="engineer@cat-diagnostics.com"),
-            User(employee_id="EMP-OP01", username="Dave Operator", role="Operator", password_hash=get_password_hash("op123"), email="operator@cat-diagnostics.com"),
-            User(employee_id="EMP-SUP01", username="Helen Supervisor", role="Supervisor", password_hash=get_password_hash("sup123"), email="workwiththarun@gmail.com"),
+            User(employee_id="EMP-ADMIN01", username="John Administrator", role="Administrator", password_hash=get_password_hash("admin123"), email="admin@cat-diagnostics.com", department="System", is_department_admin=True),
+            User(employee_id="EMP-ENG01", username="Sarah Engineer", role="Maintenance Engineer", password_hash=get_password_hash("eng123"), email="engineer@cat-diagnostics.com", department="Maintenance", is_department_admin=False),
+            User(employee_id="EMP-OP01", username="Dave Operator", role="Operator", password_hash=get_password_hash("op123"), email="operator@cat-diagnostics.com", department="Operations", is_department_admin=False),
+            User(employee_id="EMP-SUP01", username="Helen Supervisor", role="Supervisor", password_hash=get_password_hash("sup123"), email="workwiththarun@gmail.com", department="Vendor Management", is_department_admin=True),
+            
+            # Vendor Management
+            User(employee_id="EMP-VM-ADMIN", username="Keshava Admin", role="Supervisor", password_hash=get_password_hash("password"), email="vm_admin@cat-diagnostics.com", department="Vendor Management", is_department_admin=True),
+            User(employee_id="EMP-VM-A", username="Employee A", role="Operator", password_hash=get_password_hash("password"), email="vm_a@cat-diagnostics.com", department="Vendor Management", is_department_admin=False),
+            User(employee_id="EMP-VM-B", username="Employee B", role="Operator", password_hash=get_password_hash("password"), email="vm_b@cat-diagnostics.com", department="Vendor Management", is_department_admin=False),
+            User(employee_id="EMP-KESHAVA", username="Keshava", role="Operator", password_hash=get_password_hash("password"), email="keshava@cat-diagnostics.com", department="Vendor Management", is_department_admin=False),
+            
+            # Finance
+            User(employee_id="EMP-FI-ADMIN", username="Finance Admin", role="Supervisor", password_hash=get_password_hash("password"), email="fi_admin@cat-diagnostics.com", department="Finance", is_department_admin=True),
+            User(employee_id="EMP-FI-C", username="Employee C", role="Operator", password_hash=get_password_hash("password"), email="fi_c@cat-diagnostics.com", department="Finance", is_department_admin=False),
+            
+            # Procurement
+            User(employee_id="EMP-PR-ADMIN", username="Procurement Admin", role="Supervisor", password_hash=get_password_hash("password"), email="pr_admin@cat-diagnostics.com", department="Procurement", is_department_admin=True),
+            User(employee_id="EMP-PR-D", username="Employee D", role="Operator", password_hash=get_password_hash("password"), email="pr_d@cat-diagnostics.com", department="Procurement", is_department_admin=False),
         ]
         db.add_all(users)
         db.commit()

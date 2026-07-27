@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/Providers';
-import { handoverService } from '@/services/api';
+import { handoverService, sessionRecoveryService } from '@/services/api';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function ResumePage() {
@@ -30,11 +30,11 @@ export default function ResumePage() {
 
     const performResume = async () => {
       try {
-        // 1. Transfer active session role to this device
-        await handoverService.resumeSession(sessionId, deviceId);
+        // 1. Transfer active session role to this device using the recovery lock
+        await sessionRecoveryService.resumeSession(sessionId);
         
-        // 2. Fetch the stored workspace state
-        const sessionState = await handoverService.getSession(sessionId);
+        // 2. Fetch the stored workspace state from recovery service
+        const sessionState = await sessionRecoveryService.getRecoverySession(sessionId);
 
         // 3. Update Providers state locally
         updateDashboardState({
@@ -50,9 +50,11 @@ export default function ResumePage() {
 
         setStatus('success');
         
-        // Redirect back to dashboard after brief success display
+        // Redirect back to the exact page where the user left off
         setTimeout(() => {
-          router.push(sessionState.current_page || '/dashboard');
+                    const targetPage = sessionState.current_page || '/dashboard';
+          const separator = targetPage.includes('?') ? '&' : '?';
+          router.push(targetPage + separator + 'recovered=true');
         }, 1500);
 
       } catch (err: any) {
@@ -113,3 +115,4 @@ export default function ResumePage() {
     </div>
   );
 }
+

@@ -9,6 +9,8 @@ class Token(BaseModel):
     role: str
     employee_id: str
     username: str
+    department: Optional[str] = None
+    is_department_admin: Optional[bool] = False
 
 class TokenData(BaseModel):
     employee_id: Optional[str] = None
@@ -25,6 +27,8 @@ class UserBase(BaseModel):
     username: str
     role: str
     email: Optional[str] = None
+    department: Optional[str] = None
+    is_department_admin: Optional[bool] = False
 
 class UserCreate(UserBase):
     password: str
@@ -277,3 +281,70 @@ class AlertOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Session Recovery Schemas
+class SessionRecoveryHeartbeatPayload(BaseModel):
+    session_id: str
+    device_id: str
+    current_page: Optional[str] = None
+    current_module: Optional[str] = None
+    current_task: Optional[str] = None
+    current_form_state: Optional[dict] = None
+    unsaved_changes_count: Optional[int] = 0
+    step_progress: Optional[str] = "1 of 1"
+
+class SessionRecoveryStateSavePayload(BaseModel):
+    session_id: str
+    device_id: str
+    current_page: Optional[str] = None
+    current_module: Optional[str] = None
+    current_task: Optional[str] = None
+    current_form_state: Optional[dict] = None
+    unsaved_changes_count: Optional[int] = 0
+    step_progress: Optional[str] = "1 of 1"
+    selected_machine: Optional[str] = None
+    selected_site: Optional[str] = None
+    filters: Optional[dict] = None
+    dashboard_state: Optional[dict] = None
+
+class SessionRecoveryOut(BaseModel):
+    session_id: str
+    user_id: int
+    username: Optional[str] = None
+    department: Optional[str] = None
+    device_id: Optional[str] = None
+    active_device: Optional[str] = None
+    current_page: Optional[str] = None
+    current_module: Optional[str] = None
+    current_task: Optional[str] = None
+    current_form_state: Optional[Any] = None
+    unsaved_changes_count: int = 0
+    step_progress: Optional[str] = None
+    status: str
+    locked_by: Optional[int] = None
+    last_updated: datetime
+    last_activity_time: datetime
+
+    class Config:
+        from_attributes = True
+
+class AuditLogOut(BaseModel):
+    id: int
+    session_id: str
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    department: Optional[str] = None
+    device: Optional[str] = None
+    timestamp: datetime
+    ip_address: Optional[str] = None
+    action: str
+    status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class AssignEmployeePayload(BaseModel):
+    employee_id: str
+
+class HandoverPayload(BaseModel):
+    current_session_id: str

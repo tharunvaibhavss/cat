@@ -12,6 +12,8 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, nullable=False)  # Administrator, Maintenance Engineer, Operator, Supervisor
     email = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    is_department_admin = Column(Boolean, default=False, nullable=True)
 
     reports = relationship("Report", back_populates="engineer")
     work_orders = relationship("WorkOrder", back_populates="assigned_technician")
@@ -264,10 +266,36 @@ class UserSession(Base):
     filters = Column(JSON, nullable=True)
     dashboard_state = Column(JSON, nullable=True)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+    
+    # Handover and Recovery additions
+    department = Column(String, nullable=True)
+    device_id = Column(String, nullable=True)
+    current_module = Column(String, nullable=True)
+    current_task = Column(String, nullable=True)
+    current_form_state = Column(JSON, nullable=True)
+    unsaved_changes_count = Column(Integer, default=0)
+    step_progress = Column(String, default="1 of 1")
+    status = Column(String, default="ACTIVE") # ACTIVE, INTERRUPTED, RECOVERING, RECOVERED, CLOSED
+    locked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_activity_time = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    timeout_alert_sent = Column(Boolean, default=False, nullable=True)
 
-    user = relationship("User", back_populates="sessions")
+    user = relationship("User", back_populates="sessions", foreign_keys=[user_id])
 
+class SessionAuditLog(Base):
+    __tablename__ = "session_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    username = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    device = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    ip_address = Column(String, nullable=True)
+    action = Column(String, nullable=False)
+    status = Column(String, nullable=True)
 
 User.devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
-User.sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+User.sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", foreign_keys="[UserSession.user_id]")
 

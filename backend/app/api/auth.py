@@ -19,7 +19,12 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
     
     # Generate token
-    token_data = {"employee_id": user.employee_id, "role": user.role}
+    token_data = {
+        "employee_id": user.employee_id, 
+        "role": user.role,
+        "department": user.department,
+        "is_department_admin": user.is_department_admin
+    }
     access_token = create_access_token(data=token_data)
     
     # Log login activity
@@ -36,7 +41,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "role": user.role,
         "employee_id": user.employee_id,
-        "username": user.username
+        "username": user.username,
+        "department": user.department,
+        "is_department_admin": user.is_department_admin
     }
 
 @router.post("/logout")
