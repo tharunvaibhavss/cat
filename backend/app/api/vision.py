@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, VisionInspection, ActivityLog, User
-from backend.app.schemas.schemas import VisionInspectionOut
-from backend.app.vision.service import VisionService
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import Machine, VisionInspection, ActivityLog, User
+from app.schemas.schemas import VisionInspectionOut
+from app.vision.service import VisionService
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/vision", tags=["Computer Vision Inspection"])
 

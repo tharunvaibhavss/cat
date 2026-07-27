@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from backend.app.database.connection import get_db
-from backend.app.models.models import Site, Machine, DiagnosticResult, User
-from backend.app.schemas.schemas import SiteOut
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import Site, Machine, DiagnosticResult, User
+from app.schemas.schemas import SiteOut
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/sites", tags=["Multi-Site Fleet Management"])
 

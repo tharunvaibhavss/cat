@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 import datetime
 
-from backend.app.database.connection import get_db
-from backend.app.models.models import Device, UserSession, User
-from backend.app.api.deps import get_current_user
-from backend.app.services.notification_service import NotificationService
+from app.database.connection import get_db
+from app.models.models import Device, UserSession, User
+from app.api.deps import get_current_user
+from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="", tags=["Session Handover Management"])
 

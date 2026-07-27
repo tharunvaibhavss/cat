@@ -1,10 +1,10 @@
 import pytest
 import datetime
 from sqlalchemy.orm import sessionmaker
-from backend.app.database.connection import Base
-from backend.app.models.models import User, Device, UserSession
-from backend.app.api.handover import DeviceRegisterPayload, HeartbeatPayload, SessionSavePayload, SessionResumePayload
-from backend.app.api.handover import register_device, update_heartbeat, save_session, resume_session, list_devices, remove_device
+from app.database.connection import Base
+from app.models.models import User, Device, UserSession
+from app.api.handover import DeviceRegisterPayload, HeartbeatPayload, SessionSavePayload, SessionResumePayload
+from app.api.handover import register_device, update_heartbeat, save_session, resume_session, list_devices, remove_device
 
 # In-memory SQLite for testing
 from sqlalchemy import create_engine

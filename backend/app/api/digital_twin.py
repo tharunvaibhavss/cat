@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, CurrentConfiguration, DiagnosticResult, User, ActivityLog
-from backend.app.api.deps import get_current_user, require_role
-from backend.app.diagnostic_engine.predictive_engine import PredictiveEngine
+from app.database.connection import get_db
+from app.models.models import Machine, CurrentConfiguration, DiagnosticResult, User, ActivityLog
+from app.api.deps import get_current_user, require_role
+from app.diagnostic_engine.predictive_engine import PredictiveEngine
 
 router = APIRouter(prefix="/digital-twin", tags=["Digital Twin Visualization"])
 

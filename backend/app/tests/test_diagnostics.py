@@ -1,6 +1,6 @@
 import pytest
-from backend.app.diagnostic_engine.engine import DiagnosticEngine
-from backend.app.utils.security import get_password_hash, verify_password
+from app.diagnostic_engine.engine import DiagnosticEngine
+from app.utils.security import get_password_hash, verify_password
 
 def test_password_hashing():
     password = "supersecretpass"
@@ -104,7 +104,7 @@ def test_diagnostic_engine_critical_thermal():
 
 def test_email_alert_logging_fallback():
     import os
-    from backend.app.utils.email_service import send_risk_alert_email
+    from app.utils.email_service import send_risk_alert_email
     machine_info = {
         "machine_id": "TEST-UNIT-01",
         "name": "Test Hydraulic System",

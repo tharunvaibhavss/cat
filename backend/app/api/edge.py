@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
-from backend.app.database.connection import get_db
-from backend.app.models.models import ActivityLog, User
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import ActivityLog, User
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/edge", tags=["Offline Edge AI Gateway"])
 

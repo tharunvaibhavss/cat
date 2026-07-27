@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, ActivityLog, User
-from backend.app.schemas.schemas import MachineOut, MachineCreate, MachineUpdate
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, ActivityLog, User
+from app.schemas.schemas import MachineOut, MachineCreate, MachineUpdate
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/machines", tags=["Machines Management"])
 

@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
-from backend.app.models.models import UserFCMToken, UserNotificationSettings, NotificationHistory, User
+from app.models.models import UserFCMToken, UserNotificationSettings, NotificationHistory, User
 
 # Configure logger
 logger = logging.getLogger("cat_notifications")

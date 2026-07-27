@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/Providers';
 import { handoverService, sessionRecoveryService } from '@/services/api';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
-export default function ResumePage() {
+function ResumePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, deviceId, updateDashboardState } = useAuth();
@@ -113,6 +113,14 @@ export default function ResumePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResumePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="w-12 h-12 text-primary animate-spin" /></div>}>
+      <ResumePageContent />
+    </Suspense>
   );
 }
 

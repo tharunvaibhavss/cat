@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, Any, List
 import datetime
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, DiagnosticResult, Report, ActivityLog, User
-from backend.app.api.deps import get_current_user
+from app.database.connection import get_db
+from app.models.models import Machine, DiagnosticResult, Report, ActivityLog, User
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 

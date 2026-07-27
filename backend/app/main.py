@@ -8,14 +8,14 @@ load_dotenv(dotenv_path=dotenv_path)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from backend.app.database.connection import engine, Base, SessionLocal
-from backend.app.api import (
+from app.database.connection import engine, Base, SessionLocal
+from app.api import (
     auth, users, machines, diagnostic, llm, reports, dashboard, alerts,
     manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications, handover,
     recovery_ws, recovery_router
 )
-from backend.app.sample_data.seed import seed_database
-from backend.app.models.models import User
+from app.sample_data.seed import seed_database
+from app.models.models import User
 
 app = FastAPI(
     title="Heavy Industrial Machine Monitoring Platform API",
@@ -37,7 +37,7 @@ os.makedirs("backend/static/reports", exist_ok=True)
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
 
 import asyncio
-from backend.app.services.heartbeat_monitor import monitor_heartbeats
+from app.services.heartbeat_monitor import monitor_heartbeats
 
 # Startup database initialization and seeding
 @app.on_event("startup")

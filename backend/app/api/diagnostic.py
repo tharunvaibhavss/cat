@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, ActivityLog, User, ManualInspection
-from backend.app.schemas.schemas import DiagnosticResultOut, DiagnosticRunRequest
-from backend.app.api.deps import get_current_user, require_role
-from backend.app.diagnostic_engine.engine import DiagnosticEngine
-from backend.app.diagnostic_engine.historical_model import HistoricalDiagnosticModel
+from app.database.connection import get_db
+from app.models.models import Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, ActivityLog, User, ManualInspection
+from app.schemas.schemas import DiagnosticResultOut, DiagnosticRunRequest
+from app.api.deps import get_current_user, require_role
+from app.diagnostic_engine.engine import DiagnosticEngine
+from app.diagnostic_engine.historical_model import HistoricalDiagnosticModel
 
 router = APIRouter(prefix="/diagnostic", tags=["Diagnostic Engine"])
 
@@ -300,7 +300,7 @@ def run_diagnostic(
         issue_count = len(diag_data.get("issues", []))
         message = f"CRITICAL FAULT DETECTED: {machine.name} Health Score is {result.health_score}% with {issue_count} mismatch code failures."
         
-        from backend.app.models.models import Alert
+        from app.models.models import Alert
         existing_alert = db.query(Alert).filter(
             Alert.machine_id == req.machine_id,
             Alert.is_resolved == False
@@ -315,7 +315,7 @@ def run_diagnostic(
             )
             db.add(new_alert)
             db.flush()
-            from backend.app.services.notification_service import NotificationService
+            from app.services.notification_service import NotificationService
             NotificationService.notify_alert_created(db, new_alert, "Critical")
             
             # Fetch all supervisor emails
@@ -334,7 +334,7 @@ def run_diagnostic(
                 "model": machine.model
             }
             
-            from backend.app.utils.email_service import send_risk_alert_email
+            from app.utils.email_service import send_risk_alert_email
             send_risk_alert_email(
                 recipient_emails=recipient_emails,
                 machine_info=machine_info,

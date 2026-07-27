@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from backend.app.database.connection import get_db
-from backend.app.models.models import Alert, ActivityLog
-from backend.app.schemas.schemas import AlertOut
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import Alert, ActivityLog
+from app.schemas.schemas import AlertOut
+from app.api.deps import get_current_user, require_role
 import datetime
 
 router = APIRouter(prefix="/alerts", tags=["Alerts Management"])
@@ -59,8 +59,8 @@ def send_alert_email_manually(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    from backend.app.models.models import Machine, DiagnosticResult, User
-    from backend.app.utils.email_service import send_risk_alert_email
+    from app.models.models import Machine, DiagnosticResult, User
+    from app.utils.email_service import send_risk_alert_email
     
     # 1. Fetch Alert
     alert = db.query(Alert).filter(Alert.id == id).first()

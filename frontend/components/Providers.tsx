@@ -10,6 +10,8 @@ interface User {
   username: string;
   role: string;
   email?: string | null;
+  is_department_admin?: boolean;
+  id?: string | number;
 }
 
 interface AuthContextType {

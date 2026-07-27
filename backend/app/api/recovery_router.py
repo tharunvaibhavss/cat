@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 import datetime
 from typing import List, Optional
 
-from backend.app.database.connection import get_db
-from backend.app.models.models import User, UserSession, SessionAuditLog
-from backend.app.api.deps import get_current_user
-from backend.app.schemas.schemas import (
+from app.database.connection import get_db
+from app.models.models import User, UserSession, SessionAuditLog
+from app.api.deps import get_current_user
+from app.schemas.schemas import (
     SessionRecoveryHeartbeatPayload,
     SessionRecoveryStateSavePayload,
     SessionRecoveryOut,
@@ -14,7 +14,7 @@ from backend.app.schemas.schemas import (
     AssignEmployeePayload,
     HandoverPayload
 )
-from backend.app.api.recovery_ws import manager
+from app.api.recovery_ws import manager
 
 router = APIRouter(prefix="/session-recovery", tags=["Session Recovery & Handover"])
 

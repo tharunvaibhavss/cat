@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, CurrentConfiguration, ReferenceConfiguration, DiagnosticResult, User
-from backend.app.api.deps import get_current_user
-from backend.app.diagnostic_engine.predictive_engine import PredictiveEngine
-from backend.app.diagnostic_engine.historical_model import HistoricalDiagnosticModel
+from app.database.connection import get_db
+from app.models.models import Machine, CurrentConfiguration, ReferenceConfiguration, DiagnosticResult, User
+from app.api.deps import get_current_user
+from app.diagnostic_engine.predictive_engine import PredictiveEngine
+from app.diagnostic_engine.historical_model import HistoricalDiagnosticModel
 
 router = APIRouter(prefix="/predictive", tags=["Predictive Maintenance & RUL"])
 

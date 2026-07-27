@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
-from backend.app.database.connection import SessionLocal, Base, engine
-from backend.app.models.models import User, Site, Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, Report, ActivityLog, ManualInspection, WorkOrder, VisionInspection, Alert, SessionAuditLog
-from backend.app.utils.security import get_password_hash
-from backend.app.diagnostic_engine.engine import DiagnosticEngine
-from backend.app.llm.service import LLMService
+from app.database.connection import SessionLocal, Base, engine
+from app.models.models import User, Site, Machine, ReferenceConfiguration, CurrentConfiguration, DiagnosticResult, Report, ActivityLog, ManualInspection, WorkOrder, VisionInspection, Alert, SessionAuditLog
+from app.utils.security import get_password_hash
+from app.diagnostic_engine.engine import DiagnosticEngine
+from app.llm.service import LLMService
 import datetime
 import os
 

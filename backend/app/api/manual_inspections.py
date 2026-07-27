@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, ManualInspection, DiagnosticResult, ActivityLog, User, Alert
-from backend.app.schemas.schemas import ManualInspectionCreate, ManualInspectionOut
-from backend.app.api.deps import get_current_user, require_role
+from app.database.connection import get_db
+from app.models.models import Machine, ManualInspection, DiagnosticResult, ActivityLog, User, Alert
+from app.schemas.schemas import ManualInspectionCreate, ManualInspectionOut
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/manual-inspections", tags=["Manual Data Collection"])
 
@@ -172,7 +172,7 @@ def create_manual_inspection(
         )
         db.add(new_alert)
         db.flush()
-        from backend.app.services.notification_service import NotificationService
+        from app.services.notification_service import NotificationService
         NotificationService.notify_alert_created(db, new_alert, "Inspection")
 
     log = ActivityLog(

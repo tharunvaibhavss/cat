@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from backend.app.database.connection import get_db
-from backend.app.models.models import Machine, CurrentConfiguration, ReferenceConfiguration, DiagnosticResult, ActivityLog, Alert
-from backend.app.diagnostic_engine.engine import DiagnosticEngine
-from backend.app.diagnostic_engine.predictive_engine import PredictiveEngine
+from app.database.connection import get_db
+from app.models.models import Machine, CurrentConfiguration, ReferenceConfiguration, DiagnosticResult, ActivityLog, Alert
+from app.diagnostic_engine.engine import DiagnosticEngine
+from app.diagnostic_engine.predictive_engine import PredictiveEngine
 
 router = APIRouter(prefix="/telemetry", tags=["Live Remote Telemetry Ingestion"])
 
@@ -122,7 +122,7 @@ def ingest_remote_telemetry(
         )
         db.add(new_alert)
         db.flush()
-        from backend.app.services.notification_service import NotificationService
+        from app.services.notification_service import NotificationService
         NotificationService.notify_alert_created(db, new_alert, "Critical")
 
     log = ActivityLog(

@@ -56,9 +56,9 @@ manager = ConnectionManager()
 @router.websocket("/notifications")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     # Authenticate token
-    from backend.app.database.connection import SessionLocal
-    from backend.app.models.models import User
-    from backend.app.utils.security import SECRET_KEY
+    from app.database.connection import SessionLocal
+    from app.models.models import User
+    from app.utils.security import SECRET_KEY
     
     db = SessionLocal()
     try:

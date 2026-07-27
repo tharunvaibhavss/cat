@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from backend.app.database.connection import get_db
-from backend.app.models.models import DiagnosticResult, Machine, ReferenceConfiguration, CurrentConfiguration, ActivityLog, User
-from backend.app.schemas.schemas import AssistantQueryRequest, AssistantQueryResponse
-from backend.app.api.deps import get_current_user, require_role
-from backend.app.llm.service import LLMService
+from app.database.connection import get_db
+from app.models.models import DiagnosticResult, Machine, ReferenceConfiguration, CurrentConfiguration, ActivityLog, User
+from app.schemas.schemas import AssistantQueryRequest, AssistantQueryResponse
+from app.api.deps import get_current_user, require_role
+from app.llm.service import LLMService
 
 router = APIRouter(prefix="/llm", tags=["LLM Analysis Engine"])
 

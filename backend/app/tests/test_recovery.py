@@ -3,10 +3,10 @@ import datetime
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from fastapi import HTTPException
-from backend.app.database.connection import Base
-from backend.app.models.models import User, UserSession, SessionAuditLog
-from backend.app.schemas.schemas import SessionRecoveryHeartbeatPayload, AssignEmployeePayload
-from backend.app.api.recovery_router import session_heartbeat, get_recovery_session, resume_recovery_session, assign_another_employee, get_session_audit_logs
+from app.database.connection import Base
+from app.models.models import User, UserSession, SessionAuditLog
+from app.schemas.schemas import SessionRecoveryHeartbeatPayload, AssignEmployeePayload
+from app.api.recovery_router import session_heartbeat, get_recovery_session, resume_recovery_session, assign_another_employee, get_session_audit_logs
 
 # Setup sqlite in memory database for unit testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

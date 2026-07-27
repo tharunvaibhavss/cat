@@ -2,9 +2,9 @@ import asyncio
 import datetime
 import logging
 from sqlalchemy.orm import Session
-from backend.app.database.connection import SessionLocal
-from backend.app.models.models import Device, UserSession, User, SessionAuditLog
-from backend.app.api.recovery_ws import manager
+from app.database.connection import SessionLocal
+from app.models.models import Device, UserSession, User, SessionAuditLog
+from app.api.recovery_ws import manager
 
 logger = logging.getLogger("cat_heartbeat_monitor")
 logger.setLevel(logging.INFO)
