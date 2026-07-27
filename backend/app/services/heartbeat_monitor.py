@@ -84,7 +84,7 @@ async def monitor_heartbeats():
                     await manager.broadcast_to_department(
                         department=session.department,
                         message=ws_message,
-                        exclude_user_id=session_record.user_id
+                        exclude_user_id=session.user_id
                     )
 
                 # B. Handle recovery timeout after 5 minutes (300 seconds)
@@ -116,7 +116,7 @@ async def monitor_heartbeats():
                     await manager.broadcast_to_department(
                         department=session.department,
                         message=ws_message,
-                        exclude_user_id=session_record.user_id
+                        exclude_user_id=session.user_id
                     )
 
             except Exception as e:

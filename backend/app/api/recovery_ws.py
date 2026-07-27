@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
 from typing import List, Dict
 import json
-import jwt
+from jose import jwt, JWTError
 import os
 
 router = APIRouter(prefix="/ws", tags=["WebSocket Notifications"])
