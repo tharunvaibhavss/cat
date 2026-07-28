@@ -80,6 +80,26 @@ export const authService = {
   }
 };
 
+// Fleet endpoints (Phase 1)
+export const fleetService = {
+  getOverview: async () => {
+    const response = await api.get('/fleet/overview');
+    return response.data;
+  },
+  getDistribution: async () => {
+    const response = await api.get('/fleet/distribution');
+    return response.data;
+  },
+  getRanking: async () => {
+    const response = await api.get('/fleet/ranking');
+    return response.data;
+  },
+  getCritical: async () => {
+    const response = await api.get('/fleet/critical');
+    return response.data;
+  }
+};
+
 // Users endpoints
 export const userService = {
   list: async () => {

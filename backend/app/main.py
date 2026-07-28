@@ -12,7 +12,7 @@ from app.database.connection import engine, Base, SessionLocal
 from app.api import (
     auth, users, machines, diagnostic, llm, reports, dashboard, alerts,
     manual_inspections, work_orders, vision, sites, digital_twin, predictive, edge, telemetry, notifications, handover,
-    recovery_ws, recovery_router
+    recovery_ws, recovery_router, fleet
 )
 from app.sample_data.seed import seed_database
 from app.models.models import User
@@ -77,6 +77,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(handover.router, prefix="/api")
 app.include_router(recovery_ws.router, prefix="/api")
 app.include_router(recovery_router.router, prefix="/api")
+app.include_router(fleet.router, prefix="/api/fleet", tags=["fleet"])
 
 # Core Feature & Telemetry Ingestion Routers
 app.include_router(manual_inspections.router, prefix="/api")

@@ -52,6 +52,9 @@ class Machine(Base):
     operating_hours = Column(Float, default=1200.0)
     rul_hours = Column(Float, default=4500.0)  # Remaining Useful Life in hours
     risk_score = Column(Float, default=12.5)   # Estimated failure probability %
+    health_score = Column(Integer, default=100) # AI Machine Health Score (0-100)
+    utilization_percentage = Column(Float, default=85.0)
+    ranking_score = Column(Float, default=0.0)
 
     # Relationships
     site = relationship("Site", back_populates="machines")
@@ -61,6 +64,7 @@ class Machine(Base):
     manual_inspections = relationship("ManualInspection", back_populates="machine", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="machine", cascade="all, delete-orphan")
     vision_inspections = relationship("VisionInspection", back_populates="machine", cascade="all, delete-orphan")
+    health_history = relationship("MachineHealthScore", back_populates="machine", cascade="all, delete-orphan")
 
 class ReferenceConfiguration(Base):
     __tablename__ = "reference_configurations"
@@ -143,6 +147,9 @@ class WorkOrder(Base):
     assigned_technician_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     spare_parts_json = Column(JSON, nullable=True)
     est_repair_hours = Column(Float, default=2.5)
+    predicted_schedule_date = Column(DateTime, nullable=True)
+    resolution_notes = Column(String, nullable=True)
+    completion_date = Column(DateTime, nullable=True)
 
     machine = relationship("Machine", back_populates="work_orders")
     assigned_technician = relationship("User", back_populates="work_orders")
@@ -299,3 +306,22 @@ class SessionAuditLog(Base):
 User.devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
 User.sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", foreign_keys="[UserSession.user_id]")
 
+class MachineHealthScore(Base):
+    __tablename__ = "machine_health_scores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(String, ForeignKey("machines.machine_id", ondelete="CASCADE"), nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    score = Column(Integer, nullable=False)
+    
+    machine = relationship("Machine", back_populates="health_history")
+
+class FleetStatistic(Base):
+    __tablename__ = "fleet_statistics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime, default=datetime.datetime.utcnow, unique=True, nullable=False)
+    total_downtime_hours = Column(Float, default=0.0)
+    average_fleet_health = Column(Float, default=100.0)
+    maintenance_cost = Column(Float, default=0.0)
+    fuel_consumption = Column(Float, default=0.0)
